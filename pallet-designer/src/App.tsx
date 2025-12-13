@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Header } from './components/Layout/Header';
 import { Sidebar } from './components/Sidebar/Sidebar';
-import { CanvasArea } from './components/Canvas/CanvasArea';
+import { MultiViewCanvas } from './components/Canvas/MultiViewCanvas';
 import { MobileToolbar } from './components/Toolbar/MobileToolbar';
 import { SpecificationPanel } from './components/Specification/SpecificationPanel';
 import { isMobileDevice } from './utils/helpers';
@@ -26,7 +26,7 @@ function App() {
         
         {/* Canvas Area */}
         <main className="flex-1 overflow-hidden">
-          <CanvasArea />
+          <MultiViewCanvas />
         </main>
       </div>
       

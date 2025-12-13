@@ -93,17 +93,17 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   addComponent: (componentData) => {
     const id = generateId();
     const component: PalletComponent = { ...componentData, id };
-    const { canvas } = get();
+    const { canvas, components, annotations } = get();
     const view = canvas.activeView;
     
-    // Save current state to history
+    // Save current state to history (both components and annotations)
     set((state) => ({
       components: {
         ...state.components,
         [view]: [...state.components[view], component],
       },
       history: {
-        past: [...state.history.past, state.components],
+        past: [...state.history.past, { components, annotations }],
         future: [],
       },
     }));
@@ -130,6 +130,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   deleteComponent: (id) => {
+    const { components, annotations } = get();
     set((state) => {
       const newComponents = { ...state.components };
       
@@ -141,7 +142,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         components: newComponents,
         selectedComponentId: state.selectedComponentId === id ? null : state.selectedComponentId,
         history: {
-          past: [...state.history.past, state.components],
+          past: [...state.history.past, { components, annotations }],
           future: [],
         },
       };
@@ -174,7 +175,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
           },
           selectedComponentId: newComponent.id,
           history: {
-            past: [...state.history.past, state.components],
+            past: [...state.history.past, { components: state.components, annotations: state.annotations }],
             future: [],
           },
         }));
@@ -331,7 +332,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         selectedComponentId: null,
         selectedAnnotationId: null,
         history: {
-          past: [...state.history.past, state.components],
+          past: [...state.history.past, { components: state.components, annotations: state.annotations }],
           future: [],
         },
       }));
@@ -354,7 +355,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         selectedComponentId: null,
         selectedAnnotationId: null,
         history: {
-          past: [...state.history.past, state.components],
+          past: [...state.history.past, { components: state.components, annotations: state.annotations }],
           future: [],
         },
       }));
@@ -370,10 +371,11 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
     const newPast = history.past.slice(0, -1);
     
     set((state) => ({
-      components: previous,
+      components: previous.components,
+      annotations: previous.annotations,
       history: {
         past: newPast,
-        future: [state.components, ...state.history.future],
+        future: [{ components: state.components, annotations: state.annotations }, ...state.history.future],
       },
     }));
   },
@@ -386,9 +388,10 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
     const newFuture = history.future.slice(1);
     
     set((state) => ({
-      components: next,
+      components: next.components,
+      annotations: next.annotations,
       history: {
-        past: [...state.history.past, state.components],
+        past: [...state.history.past, { components: state.components, annotations: state.annotations }],
         future: newFuture,
       },
     }));

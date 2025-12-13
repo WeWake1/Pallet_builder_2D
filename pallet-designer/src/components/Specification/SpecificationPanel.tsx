@@ -182,7 +182,7 @@ export function SpecificationPanel({ onClose }: SpecificationPanelProps) {
               <label className="block text-sm font-medium text-[var(--color-text)] mb-1">
                 Reversibility
               </label>
-              <select
+              <select 
                 value={localSpec.classification.reversible}
                 onChange={(e) =>
                   updateLocal('classification', {

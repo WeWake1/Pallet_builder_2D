@@ -22,14 +22,16 @@ export const VIEW_LABELS: Record<ViewType, { label: string; arrow: string }> = {
   bottom: { label: 'Bottom View', arrow: 'D' },
 };
 
-// Default component dimensions (in mm) - Industry standard sizes
+// Default component dimensions (in mm) - Scaled for A4 canvas display
+// These represent the component size on the canvas/paper, not real-world size
+// For a pallet drawing, think of this as 1:10 scale (10mm paper = 100mm real)
 export const DEFAULT_COMPONENT_DIMENSIONS: Record<string, { width: number; thickness: number; length: number }> = {
-  'deck-board': { width: 100, thickness: 22, length: 1000 },      // Standard deck board
-  'stringer': { width: 145, thickness: 22, length: 1200 },        // Standard stringer
-  'block': { width: 145, thickness: 78, length: 145 },            // Euro EPAL block (145x78x145)
-  'notched-block': { width: 89, thickness: 89, length: 140 },     // GMA notched block (3.5"x3.5"x5.5")
-  'chamfered-block': { width: 145, thickness: 78, length: 145 },  // CP chamfered block
-  'lead-board': { width: 100, thickness: 22, length: 800 },       // Lead/edge board
+  'deck-board': { width: 10, thickness: 2, length: 100 },         // Deck board (scaled)
+  'stringer': { width: 15, thickness: 2, length: 120 },           // Stringer (scaled)
+  'block': { width: 15, thickness: 8, length: 15 },               // Block (scaled)
+  'notched-block': { width: 10, thickness: 10, length: 15 },      // Notched block (scaled)
+  'chamfered-block': { width: 15, thickness: 8, length: 15 },     // Chamfered block (scaled)
+  'lead-board': { width: 10, thickness: 2, length: 80 },          // Lead board (scaled)
 };
 
 // GMA Notch specifications (in mm)
@@ -52,42 +54,42 @@ export const COMPONENT_DEFINITIONS: ComponentDefinition[] = [
     name: 'Deck Board',
     icon: '▬',
     defaultDimensions: DEFAULT_COMPONENT_DIMENSIONS['deck-board'],
-    description: 'Top or bottom plank (100×22mm)',
+    description: 'Top or bottom plank',
   },
   {
     type: 'stringer',
     name: 'Stringer',
     icon: '═',
     defaultDimensions: DEFAULT_COMPONENT_DIMENSIONS['stringer'],
-    description: 'Long support beam (145×22mm)',
+    description: 'Long support beam',
   },
   {
     type: 'block',
     name: 'Block',
     icon: '▢',
     defaultDimensions: DEFAULT_COMPONENT_DIMENSIONS['block'],
-    description: 'Standard block (145×78×145mm)',
+    description: 'Standard support block',
   },
   {
     type: 'notched-block',
     name: 'Notched Block',
     icon: '▣',
     defaultDimensions: DEFAULT_COMPONENT_DIMENSIONS['notched-block'],
-    description: 'GMA style (89×89×140mm)',
+    description: 'GMA style with notch',
   },
   {
     type: 'chamfered-block',
     name: 'Chamfered Block',
     icon: '◈',
     defaultDimensions: DEFAULT_COMPONENT_DIMENSIONS['chamfered-block'],
-    description: 'CP style with 15mm chamfer',
+    description: 'CP style with chamfer',
   },
   {
     type: 'lead-board',
     name: 'Lead Board',
     icon: '▭',
     defaultDimensions: DEFAULT_COMPONENT_DIMENSIONS['lead-board'],
-    description: 'Edge board (100×22mm)',
+    description: 'Edge/lead board',
   },
 ];
 

@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useStore, useSelectedComponent } from '../../store/useStore';
-import { COMPONENT_DEFINITIONS, VIEW_LABELS, COMPONENT_COLORS } from '../../constants';
+import { COMPONENT_DEFINITIONS, COMPONENT_COLORS } from '../../constants';
 import { PropertiesPanel } from './PropertiesPanel';
-import type { ComponentType, ViewType, AnnotationType } from '../../types';
+import type { ComponentType, AnnotationType } from '../../types';
 
 type TabType = 'components' | 'properties' | 'annotations';
 
@@ -14,14 +14,22 @@ const ANNOTATION_TOOLS: { type: AnnotationType; name: string; icon: string; desc
 ];
 
 export function Sidebar() {
-  const { canvas, setActiveView, addComponent, addAnnotation, toggleGrid, toggleSnap } = useStore();
+  const { canvas, addComponent, addAnnotation, selectComponent, toggleGrid, toggleSnap } = useStore();
   const { activeView, gridEnabled, snapToGrid } = canvas;
   const selectedComponent = useSelectedComponent();
   const [activeTab, setActiveTab] = useState<TabType>('components');
   const [draggedComponent, setDraggedComponent] = useState<ComponentType | null>(null);
 
-  // Auto-switch to properties when component selected
-  const effectiveTab = selectedComponent ? 'properties' : activeTab;
+  // Handle tab change - deselect component when switching away from properties
+  const handleTabChange = (tab: TabType) => {
+    if (tab !== 'properties') {
+      selectComponent(null); // Deselect component when switching to other tabs
+    }
+    setActiveTab(tab);
+  };
+
+  // If component selected and we're not explicitly on another tab, show properties
+  const effectiveTab = activeTab;
 
   const handleAddComponent = (type: ComponentType) => {
     const definition = COMPONENT_DEFINITIONS.find((d) => d.type === type);
@@ -81,33 +89,10 @@ export function Sidebar() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* View Selector */}
-      <div className="p-4 border-b border-[var(--color-border)]">
-        <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
-          Views
-        </h3>
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(VIEW_LABELS) as ViewType[]).map((view) => (
-            <button
-              key={view}
-              onClick={() => setActiveView(view)}
-              className={`py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                activeView === view
-                  ? 'bg-[var(--color-primary)] text-white'
-                  : 'bg-gray-100 text-[var(--color-text)] hover:bg-gray-200'
-              }`}
-            >
-              {VIEW_LABELS[view].label.replace(' View', '')}
-              <span className="ml-1 opacity-60">({VIEW_LABELS[view].arrow})</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Tab Switcher */}
       <div className="flex border-b border-[var(--color-border)]">
         <button
-          onClick={() => setActiveTab('components')}
+          onClick={() => handleTabChange('components')}
           className={`flex-1 py-2 text-sm font-medium transition-colors ${
             effectiveTab === 'components'
               ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
@@ -117,7 +102,7 @@ export function Sidebar() {
           Components
         </button>
         <button
-          onClick={() => setActiveTab('properties')}
+          onClick={() => handleTabChange('properties')}
           className={`flex-1 py-2 text-sm font-medium transition-colors ${
             effectiveTab === 'properties'
               ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
@@ -130,7 +115,7 @@ export function Sidebar() {
           )}
         </button>
         <button
-          onClick={() => setActiveTab('annotations')}
+          onClick={() => handleTabChange('annotations')}
           className={`flex-1 py-2 text-sm font-medium transition-colors ${
             effectiveTab === 'annotations'
               ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'

@@ -237,6 +237,63 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     fabricRef.current.renderAll();
   }, [width, height]);
 
+  // Draw grid when enabled
+  useEffect(() => {
+    if (!fabricRef.current) return;
+    
+    const canvas = fabricRef.current;
+    const objects = canvas.getObjects();
+    
+    // Remove existing grid lines
+    objects.forEach((obj) => {
+      const data = getObjectData(obj);
+      if (data?.isGrid) {
+        canvas.remove(obj);
+      }
+    });
+    
+    // Draw grid if enabled
+    if (canvasState.gridEnabled) {
+      const gridSize = canvasState.gridSize * CANVAS_SCALE; // Convert mm to pixels
+      const gridColor = '#e0e0e0';
+      const gridLines: fabric.Line[] = [];
+      
+      // Vertical lines
+      for (let x = 0; x <= width; x += gridSize) {
+        const line = new fabric.Line([x, 0, x, height], {
+          stroke: gridColor,
+          strokeWidth: x % (gridSize * 5) === 0 ? 1 : 0.5, // Thicker every 5 cells (50mm)
+          selectable: false,
+          evented: false,
+          excludeFromExport: true,
+        });
+        setObjectData(line, { id: `grid-v-${x}`, type: 'grid', isGrid: true });
+        gridLines.push(line);
+      }
+      
+      // Horizontal lines
+      for (let y = 0; y <= height; y += gridSize) {
+        const line = new fabric.Line([0, y, width, y], {
+          stroke: gridColor,
+          strokeWidth: y % (gridSize * 5) === 0 ? 1 : 0.5,
+          selectable: false,
+          evented: false,
+          excludeFromExport: true,
+        });
+        setObjectData(line, { id: `grid-h-${y}`, type: 'grid', isGrid: true });
+        gridLines.push(line);
+      }
+      
+      // Add all grid lines to canvas (at the back)
+      gridLines.forEach((line) => {
+        canvas.add(line);
+        canvas.sendObjectToBack(line);
+      });
+    }
+    
+    canvas.renderAll();
+  }, [canvasState.gridEnabled, canvasState.gridSize, width, height]);
+
   // Sync components to canvas
   const syncComponents = useCallback((viewComponents: PalletComponent[]) => {
     if (!fabricRef.current) return;

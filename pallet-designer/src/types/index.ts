@@ -175,10 +175,10 @@ export interface AppState {
   // Current preset
   currentPreset: PalletPreset;
   
-  // History for undo/redo
+  // History for undo/redo - stores both components and annotations
   history: {
-    past: Record<ViewType, PalletComponent[]>[];
-    future: Record<ViewType, PalletComponent[]>[];
+    past: { components: Record<ViewType, PalletComponent[]>; annotations: Record<ViewType, Annotation[]> }[];
+    future: { components: Record<ViewType, PalletComponent[]>; annotations: Record<ViewType, Annotation[]> }[];
   };
 }
 
