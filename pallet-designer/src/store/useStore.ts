@@ -75,10 +75,12 @@ const initialState: Omit<AppState, keyof AppActions> = {
     gridEnabled: true,
     snapToGrid: true,
     gridSize: DEFAULT_GRID_SIZE,
+    darkMode: false,
   },
-  selectedComponentId: null,
+  selectedComponentIds: [],
   selectedAnnotationId: null,
   currentPreset: 'custom',
+  clipboard: null,
   history: {
     past: [],
     future: [],
@@ -140,7 +142,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       
       return {
         components: newComponents,
-        selectedComponentId: state.selectedComponentId === id ? null : state.selectedComponentId,
+        selectedComponentIds: state.selectedComponentIds.filter((cid) => cid !== id),
         history: {
           past: [...state.history.past, { components, annotations }],
           future: [],
@@ -150,7 +152,25 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   selectComponent: (id) => {
-    set({ selectedComponentId: id });
+    set({ selectedComponentIds: id ? [id] : [] });
+  },
+
+  selectComponents: (ids) => {
+    set({ selectedComponentIds: ids });
+  },
+
+  addToSelection: (id) => {
+    set((state) => ({
+      selectedComponentIds: state.selectedComponentIds.includes(id) 
+        ? state.selectedComponentIds 
+        : [...state.selectedComponentIds, id],
+    }));
+  },
+
+  removeFromSelection: (id) => {
+    set((state) => ({
+      selectedComponentIds: state.selectedComponentIds.filter((cid) => cid !== id),
+    }));
   },
 
   duplicateComponent: (id) => {
@@ -173,7 +193,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
             ...state.components,
             [view]: [...state.components[view], newComponent],
           },
-          selectedComponentId: newComponent.id,
+          selectedComponentIds: [newComponent.id],
           history: {
             past: [...state.history.past, { components: state.components, annotations: state.annotations }],
             future: [],
@@ -182,6 +202,47 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         break;
       }
     }
+  },
+
+  copyComponent: (id) => {
+    const { components } = get();
+    
+    for (const view of Object.keys(components) as ViewType[]) {
+      const component = components[view].find((c) => c.id === id);
+      if (component) {
+        set({ clipboard: { ...component } });
+        break;
+      }
+    }
+  },
+
+  pasteComponent: () => {
+    const { clipboard, canvas } = get();
+    
+    if (!clipboard) return;
+    
+    const newComponent: PalletComponent = {
+      ...clipboard,
+      id: generateId(),
+      view: canvas.activeView,
+      position: {
+        x: clipboard.position.x + 20,
+        y: clipboard.position.y + 20,
+      },
+    };
+    
+    set((state) => ({
+      components: {
+        ...state.components,
+        [canvas.activeView]: [...state.components[canvas.activeView], newComponent],
+      },
+      selectedComponentIds: [newComponent.id],
+      clipboard: { ...clipboard, position: newComponent.position }, // Update clipboard position for next paste
+      history: {
+        past: [...state.history.past, { components: state.components, annotations: state.annotations }],
+        future: [],
+      },
+    }));
   },
 
   // Annotation actions
@@ -237,14 +298,14 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   selectAnnotation: (id) => {
-    set({ selectedAnnotationId: id, selectedComponentId: null });
+    set({ selectedAnnotationId: id, selectedComponentIds: [] });
   },
 
   // View actions
   setActiveView: (view) => {
     set((state) => ({
       canvas: { ...state.canvas, activeView: view },
-      selectedComponentId: null,
+      selectedComponentIds: [],
       selectedAnnotationId: null,
     }));
   },
@@ -263,15 +324,38 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   toggleGrid: () => {
-    set((state) => ({
-      canvas: { ...state.canvas, gridEnabled: !state.canvas.gridEnabled },
-    }));
+    set((state) => {
+      const newGridEnabled = !state.canvas.gridEnabled;
+      // When grid is enabled, also enable snap. When disabled, disable snap too.
+      return {
+        canvas: { 
+          ...state.canvas, 
+          gridEnabled: newGridEnabled,
+          snapToGrid: newGridEnabled,
+        },
+      };
+    });
   },
 
   toggleSnap: () => {
     set((state) => ({
       canvas: { ...state.canvas, snapToGrid: !state.canvas.snapToGrid },
     }));
+  },
+
+  toggleDarkMode: () => {
+    set((state) => {
+      const newDarkMode = !state.canvas.darkMode;
+      // Apply dark class to document
+      if (newDarkMode) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+      return {
+        canvas: { ...state.canvas, darkMode: newDarkMode },
+      };
+    });
   },
 
   setGridSize: (size) => {
@@ -329,7 +413,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
           ...state.specification,
           overallDimensions: presetDimensions,
         },
-        selectedComponentId: null,
+        selectedComponentIds: [],
         selectedAnnotationId: null,
         history: {
           past: [...state.history.past, { components: state.components, annotations: state.annotations }],
@@ -352,7 +436,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
           bottom: [],
         },
         currentPreset: preset,
-        selectedComponentId: null,
+        selectedComponentIds: [],
         selectedAnnotationId: null,
         history: {
           past: [...state.history.past, { components: state.components, annotations: state.annotations }],
@@ -397,6 +481,81 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
     }));
   },
 
+  // Layer ordering actions (inspired by Excalidraw)
+  bringToFront: (id) => {
+    const { components, canvas } = get();
+    const view = canvas.activeView;
+    const viewComponents = components[view];
+    const index = viewComponents.findIndex((c) => c.id === id);
+    
+    if (index === -1 || index === viewComponents.length - 1) return;
+    
+    const component = viewComponents[index];
+    const newComponents = [
+      ...viewComponents.slice(0, index),
+      ...viewComponents.slice(index + 1),
+      component,
+    ];
+    
+    set({
+      components: { ...components, [view]: newComponents },
+    });
+  },
+
+  bringForward: (id) => {
+    const { components, canvas } = get();
+    const view = canvas.activeView;
+    const viewComponents = components[view];
+    const index = viewComponents.findIndex((c) => c.id === id);
+    
+    if (index === -1 || index === viewComponents.length - 1) return;
+    
+    const newComponents = [...viewComponents];
+    // Swap with next element
+    [newComponents[index], newComponents[index + 1]] = [newComponents[index + 1], newComponents[index]];
+    
+    set({
+      components: { ...components, [view]: newComponents },
+    });
+  },
+
+  sendToBack: (id) => {
+    const { components, canvas } = get();
+    const view = canvas.activeView;
+    const viewComponents = components[view];
+    const index = viewComponents.findIndex((c) => c.id === id);
+    
+    if (index <= 0) return;
+    
+    const component = viewComponents[index];
+    const newComponents = [
+      component,
+      ...viewComponents.slice(0, index),
+      ...viewComponents.slice(index + 1),
+    ];
+    
+    set({
+      components: { ...components, [view]: newComponents },
+    });
+  },
+
+  sendBackward: (id) => {
+    const { components, canvas } = get();
+    const view = canvas.activeView;
+    const viewComponents = components[view];
+    const index = viewComponents.findIndex((c) => c.id === id);
+    
+    if (index <= 0) return;
+    
+    const newComponents = [...viewComponents];
+    // Swap with previous element
+    [newComponents[index - 1], newComponents[index]] = [newComponents[index], newComponents[index - 1]];
+    
+    set({
+      components: { ...components, [view]: newComponents },
+    });
+  },
+
   // Reset
   resetCanvas: () => {
     set({
@@ -417,13 +576,31 @@ export const useActiveViewAnnotations = () => {
 
 export const useSelectedComponent = () => {
   return useStore((state) => {
-    if (!state.selectedComponentId) return null;
+    // Return the first selected component (for backward compatibility with single selection UI)
+    if (state.selectedComponentIds.length === 0) return null;
+    const selectedId = state.selectedComponentIds[0];
     
     for (const view of Object.keys(state.components) as ViewType[]) {
-      const component = state.components[view].find((c) => c.id === state.selectedComponentId);
+      const component = state.components[view].find((c) => c.id === selectedId);
       if (component) return component;
     }
     return null;
+  });
+};
+
+export const useSelectedComponents = () => {
+  return useStore((state) => {
+    const components: PalletComponent[] = [];
+    for (const id of state.selectedComponentIds) {
+      for (const view of Object.keys(state.components) as ViewType[]) {
+        const component = state.components[view].find((c) => c.id === id);
+        if (component) {
+          components.push(component);
+          break;
+        }
+      }
+    }
+    return components;
   });
 };
 

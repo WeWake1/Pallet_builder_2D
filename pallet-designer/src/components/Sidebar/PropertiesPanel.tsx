@@ -2,7 +2,7 @@ import { useStore, useSelectedComponent } from '../../store/useStore';
 import { COMPONENT_COLORS } from '../../constants';
 
 export function PropertiesPanel() {
-  const { updateComponent, deleteComponent, duplicateComponent } = useStore();
+  const { updateComponent, deleteComponent, duplicateComponent, bringToFront, bringForward, sendToBack, sendBackward } = useStore();
   const selectedComponent = useSelectedComponent();
 
   if (!selectedComponent) {
@@ -153,6 +153,55 @@ export function PropertiesPanel() {
             className="w-16 h-8 px-2 rounded border border-[var(--color-border)] text-sm text-center focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
           />
           <span className="text-xs text-[var(--color-text-muted)]">°</span>
+        </div>
+      </div>
+
+      {/* Layer Ordering */}
+      <div>
+        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+          Layer Order
+        </h4>
+        <div className="grid grid-cols-4 gap-1">
+          <button
+            onClick={() => sendToBack(selectedComponent.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Send to Back (Ctrl+Shift+[)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <button
+            onClick={() => sendBackward(selectedComponent.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Send Backward (Ctrl+[)"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => bringForward(selectedComponent.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Bring Forward (Ctrl+])"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => bringToFront(selectedComponent.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Bring to Front (Ctrl+Shift+])"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex justify-between text-[10px] text-[var(--color-text-muted)] mt-1 px-1">
+          <span>Back</span>
+          <span>Front</span>
         </div>
       </div>
 

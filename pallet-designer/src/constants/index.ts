@@ -12,7 +12,7 @@ export const A4_WIDTH_PX = A4_WIDTH_MM * CANVAS_SCALE;
 export const A4_HEIGHT_PX = A4_HEIGHT_MM * CANVAS_SCALE;
 
 // Grid settings
-export const DEFAULT_GRID_SIZE = 10; // 10mm grid
+export const DEFAULT_GRID_SIZE = 5; // 5mm grid (finer for precision)
 
 // View labels
 export const VIEW_LABELS: Record<ViewType, { label: string; arrow: string }> = {

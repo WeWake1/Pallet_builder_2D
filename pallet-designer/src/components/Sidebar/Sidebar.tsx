@@ -14,8 +14,8 @@ const ANNOTATION_TOOLS: { type: AnnotationType; name: string; icon: string; desc
 ];
 
 export function Sidebar() {
-  const { canvas, addComponent, addAnnotation, selectComponent, toggleGrid, toggleSnap } = useStore();
-  const { activeView, gridEnabled, snapToGrid } = canvas;
+  const { canvas, addComponent, addAnnotation, selectComponent, toggleGrid } = useStore();
+  const { activeView, gridEnabled } = canvas;
   const selectedComponent = useSelectedComponent();
   const [activeTab, setActiveTab] = useState<TabType>('components');
   const [draggedComponent, setDraggedComponent] = useState<ComponentType | null>(null);
@@ -143,8 +143,8 @@ export function Sidebar() {
                   onDragEnd={handleDragEnd}
                   className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left group cursor-grab active:cursor-grabbing ${
                     draggedComponent === component.type
-                      ? 'border-[var(--color-primary)] bg-blue-100 opacity-50'
-                      : 'border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-blue-50'
+                      ? 'border-[var(--color-primary)] bg-blue-100 dark:bg-blue-900/30 opacity-50'
+                      : 'border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)]'
                   }`}
                 >
                   <div
@@ -188,9 +188,9 @@ export function Sidebar() {
                 <button
                   key={tool.type}
                   onClick={() => handleAddAnnotation(tool.type)}
-                  className="w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-blue-50 transition-all text-left group"
+                  className="w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all text-left group"
                 >
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-gray-100 border-2 border-gray-300 shrink-0">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-gray-100 dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-500 shrink-0">
                     {tool.icon}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -218,19 +218,24 @@ export function Sidebar() {
         {effectiveTab === 'properties' && <PropertiesPanel />}
       </div>
 
+
+
       {/* Canvas Settings */}
       <div className="p-4 border-t border-[var(--color-border)]">
         <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">
           Settings
         </h3>
         <div className="space-y-3">
-          {/* Grid Toggle */}
+          {/* Grid Toggle (also enables snap) */}
           <label className="flex items-center justify-between cursor-pointer">
-            <span className="text-sm text-[var(--color-text)]">Show Grid</span>
+            <div>
+              <span className="text-sm text-[var(--color-text)]">Show Grid</span>
+              <p className="text-xs text-[var(--color-text-muted)]">Also enables snap</p>
+            </div>
             <button
               onClick={toggleGrid}
               className={`relative w-11 h-6 rounded-full transition-colors ${
-                gridEnabled ? 'bg-[var(--color-primary)]' : 'bg-gray-300'
+                gridEnabled ? 'bg-[var(--color-primary)]' : 'bg-gray-300 dark:bg-gray-600'
               }`}
             >
               <span
@@ -240,25 +245,9 @@ export function Sidebar() {
               />
             </button>
           </label>
-
-          {/* Snap Toggle */}
-          <label className="flex items-center justify-between cursor-pointer">
-            <span className="text-sm text-[var(--color-text)]">Snap to Grid</span>
-            <button
-              onClick={toggleSnap}
-              className={`relative w-11 h-6 rounded-full transition-colors ${
-                snapToGrid ? 'bg-[var(--color-primary)]' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  snapToGrid ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </label>
         </div>
       </div>
     </div>
   );
 }
+

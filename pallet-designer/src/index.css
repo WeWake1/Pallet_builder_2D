@@ -8,12 +8,36 @@
   --color-accent: #f59e0b;
   --color-background: #f8fafc;
   --color-surface: #ffffff;
+  --color-surface-hover: #f1f5f9;
+  --color-surface-active: #e2e8f0;
   --color-text: #1e293b;
   --color-text-muted: #64748b;
   --color-border: #e2e8f0;
   --color-wood-light: #d4a574;
   --color-wood-dark: #8b6914;
   --color-wood-grain: #c4956a;
+  --color-canvas-background: #e2e8f0;
+  --color-grid: rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Mode Theme */
+.dark {
+  --color-primary: #42a5f5;
+  --color-primary-dark: #1e88e5;
+  --color-secondary: #94a3b8;
+  --color-accent: #fbbf24;
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-surface-hover: #334155;
+  --color-surface-active: #475569;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-border: #334155;
+  --color-wood-light: #d4a574;
+  --color-wood-dark: #8b6914;
+  --color-wood-grain: #c4956a;
+  --color-canvas-background: #1e293b;
+  --color-grid: rgba(255, 255, 255, 0.1);
 }
 
 /* Base Styles */

@@ -147,6 +147,7 @@ export interface CanvasState {
   gridEnabled: boolean;
   snapToGrid: boolean;
   gridSize: number; // in mm
+  darkMode: boolean;
 }
 
 // Main app state
@@ -166,14 +167,17 @@ export interface AppState {
   // Canvas state
   canvas: CanvasState;
   
-  // Selected component
-  selectedComponentId: string | null;
+  // Selected component(s) - supports multi-selection
+  selectedComponentIds: string[];
   
   // Selected annotation
   selectedAnnotationId: string | null;
   
   // Current preset
   currentPreset: PalletPreset;
+  
+  // Clipboard for copy/paste
+  clipboard: PalletComponent | null;
   
   // History for undo/redo - stores both components and annotations
   history: {
@@ -189,7 +193,12 @@ export interface AppActions {
   updateComponent: (id: string, updates: Partial<PalletComponent>) => void;
   deleteComponent: (id: string) => void;
   selectComponent: (id: string | null) => void;
+  selectComponents: (ids: string[]) => void;
+  addToSelection: (id: string) => void;
+  removeFromSelection: (id: string) => void;
   duplicateComponent: (id: string) => void;
+  copyComponent: (id: string) => void;
+  pasteComponent: () => void;
   
   // Annotation actions
   addAnnotation: (annotation: NewAnnotation) => void;
@@ -205,6 +214,7 @@ export interface AppActions {
   setPan: (x: number, y: number) => void;
   toggleGrid: () => void;
   toggleSnap: () => void;
+  toggleDarkMode: () => void;
   setGridSize: (size: number) => void;
   
   // Specification actions
@@ -215,6 +225,12 @@ export interface AppActions {
   
   // Preset actions
   loadPreset: (preset: PalletPreset) => void;
+  
+  // Layer ordering actions (like Excalidraw)
+  bringToFront: (id: string) => void;
+  bringForward: (id: string) => void;
+  sendToBack: (id: string) => void;
+  sendBackward: (id: string) => void;
   
   // History actions
   undo: () => void;

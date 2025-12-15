@@ -4,6 +4,7 @@ import { useFabricCanvas } from '../../hooks/useFabricCanvas';
 import { VIEW_LABELS, ZOOM_LIMITS, A4_WIDTH_PX, A4_HEIGHT_PX, COMPONENT_DEFINITIONS, CANVAS_SCALE, COMPONENT_COLORS } from '../../constants';
 import type { ViewType, ComponentType } from '../../types';
 import * as fabric from 'fabric';
+import { ContextMenu } from './ContextMenu';
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
 
@@ -71,16 +72,16 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
       onClick={onClick}
       className={`flex flex-col items-center p-1 rounded transition-all ${
         isActive 
-          ? 'bg-blue-100 ring-2 ring-[var(--color-primary)]' 
-          : 'bg-gray-50 hover:bg-gray-100'
+          ? 'bg-blue-100 dark:bg-blue-900/30 ring-2 ring-[var(--color-primary)]' 
+          : 'bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)]'
       }`}
     >
-      <div className="bg-white shadow-sm overflow-hidden" style={{ width: A4_WIDTH_PX * scale, height: A4_HEIGHT_PX * scale }}>
+      <div className="bg-white dark:bg-slate-800 shadow-sm overflow-hidden" style={{ width: A4_WIDTH_PX * scale, height: A4_HEIGHT_PX * scale }}>
         <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
           <canvas ref={canvasRef} />
         </div>
       </div>
-      <span className={`text-xs mt-1 ${isActive ? 'text-[var(--color-primary)] font-medium' : 'text-gray-600'}`}>
+      <span className={`text-xs mt-1 ${isActive ? 'text-[var(--color-primary)] font-medium' : 'text-[var(--color-text-muted)]'}`}>
         {VIEW_LABELS[view].label.replace(' View', '')}
       </span>
     </button>
@@ -91,10 +92,11 @@ export function MultiViewCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
-  const { canvas, setActiveView, setZoom, deleteComponent, selectedComponentId, addComponent } = useStore();
-  const { activeView, zoom, gridEnabled } = canvas;
+  const { canvas, setActiveView, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, copyComponent, pasteComponent } = useStore();
+  const { activeView, zoom } = canvas;
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [isDragOver, setIsDragOver] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; componentId: string | null; annotationId: string | null } | null>(null);
   const viewComponents = useActiveViewComponents();
 
   const canvasWidth = A4_WIDTH_PX;
@@ -146,17 +148,83 @@ export function MultiViewCanvas() {
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
+  // Handle delete for multiple selected components and layer ordering
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedComponentId) {
+      // Don't handle shortcuts when typing in inputs
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
+        return;
+      }
+      
+      // Undo: Ctrl/Cmd + Z
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        deleteComponent(selectedComponentId);
+        undo();
+        return;
+      }
+      
+      // Copy: Ctrl/Cmd + C
+      if ((e.ctrlKey || e.metaKey) && e.key === 'c' && selectedComponentIds.length > 0) {
+        e.preventDefault();
+        copyComponent(selectedComponentIds[0]);
+        return;
+      }
+      
+      // Paste: Ctrl/Cmd + V
+      if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        pasteComponent();
+        return;
+      }
+      
+      // Duplicate: Ctrl/Cmd + D
+      if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedComponentIds.length > 0) {
+        e.preventDefault();
+        const { duplicateComponent } = useStore.getState();
+        duplicateComponent(selectedComponentIds[0]);
+        return;
+      }
+      
+      // Delete key - handle both components and annotations
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedComponentIds.length > 0 || selectedAnnotationId)) {
+        e.preventDefault();
+        // Delete all selected components
+        selectedComponentIds.forEach((id) => deleteComponent(id));
+        // Delete selected annotation if any
+        if (selectedAnnotationId) {
+          deleteAnnotation(selectedAnnotationId);
+        }
+      }
+      
+      // Layer ordering shortcuts (like Excalidraw)
+      // Ctrl+] or Cmd+] - Bring Forward
+      if ((e.ctrlKey || e.metaKey) && e.key === ']' && !e.shiftKey && selectedComponentIds.length > 0) {
+        e.preventDefault();
+        selectedComponentIds.forEach((id) => bringForward(id));
+      }
+      
+      // Ctrl+[ or Cmd+[ - Send Backward
+      if ((e.ctrlKey || e.metaKey) && e.key === '[' && !e.shiftKey && selectedComponentIds.length > 0) {
+        e.preventDefault();
+        selectedComponentIds.forEach((id) => sendBackward(id));
+      }
+      
+      // Ctrl+Shift+] or Cmd+Shift+] - Bring to Front
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === ']' && selectedComponentIds.length > 0) {
+        e.preventDefault();
+        selectedComponentIds.forEach((id) => bringToFront(id));
+      }
+      
+      // Ctrl+Shift+[ or Cmd+Shift+[ - Send to Back
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '[' && selectedComponentIds.length > 0) {
+        e.preventDefault();
+        selectedComponentIds.forEach((id) => sendToBack(id));
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedComponentId, deleteComponent]);
+  }, [selectedComponentIds, selectedAnnotationId, deleteComponent, deleteAnnotation, bringToFront, bringForward, sendToBack, sendBackward, undo, copyComponent, pasteComponent]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -212,15 +280,36 @@ export function MultiViewCanvas() {
     });
   }, [addComponent, activeView, scale]);
 
+  // Handle right-click context menu
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    
+    // Check if clicked on a selected component or annotation
+    const componentId = selectedComponentIds.length > 0 ? selectedComponentIds[0] : null;
+    const annotationId = selectedAnnotationId;
+    
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      componentId,
+      annotationId,
+    });
+  }, [selectedComponentIds, selectedAnnotationId]);
+
+  // Close context menu when clicking elsewhere
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
   return (
-    <div ref={containerRef} className="h-full flex flex-col bg-gray-100 overflow-hidden">
+    <div ref={containerRef} className="h-full flex flex-col bg-[var(--color-background)] overflow-hidden">
       {/* Toolbar */}
       <div className="shrink-0 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-2 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-[var(--color-text)]">
             {VIEW_LABELS[activeView].label}
           </span>
-          <span className="text-xs text-[var(--color-text-muted)] bg-gray-100 px-2 py-0.5 rounded">
+          <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface-hover)] px-2 py-0.5 rounded">
             {VIEW_LABELS[activeView].arrow}
           </span>
           <span className="text-xs text-[var(--color-text-muted)]">
@@ -233,7 +322,7 @@ export function MultiViewCanvas() {
           <button
             onClick={() => setZoom(zoom - ZOOM_LIMITS.step)}
             disabled={zoom <= ZOOM_LIMITS.min}
-            className="w-8 h-8 rounded border border-[var(--color-border)] flex items-center justify-center hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-8 h-8 rounded border border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-center hover:bg-[var(--color-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
@@ -245,7 +334,7 @@ export function MultiViewCanvas() {
           <button
             onClick={() => setZoom(zoom + ZOOM_LIMITS.step)}
             disabled={zoom >= ZOOM_LIMITS.max}
-            className="w-8 h-8 rounded border border-[var(--color-border)] flex items-center justify-center hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-8 h-8 rounded border border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-center hover:bg-[var(--color-surface-hover)] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -263,7 +352,7 @@ export function MultiViewCanvas() {
       {/* Main Content - Canvas + View Previews */}
       <div className="flex-1 flex overflow-hidden">
         {/* View Previews Panel */}
-        <div className="shrink-0 w-20 bg-white border-r border-[var(--color-border)] p-2 flex flex-col gap-2 overflow-y-auto">
+        <div className="shrink-0 w-20 bg-[var(--color-surface)] border-r border-[var(--color-border)] p-2 flex flex-col gap-2 overflow-y-auto">
           <div className="text-xs text-center text-[var(--color-text-muted)] font-medium mb-1">Views</div>
           {VIEWS.map((view) => (
             <ViewPreview
@@ -286,6 +375,7 @@ export function MultiViewCanvas() {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              onContextMenu={handleContextMenu}
               className={`bg-white shadow-lg relative overflow-hidden transition-all ${
                 isDragOver ? 'ring-4 ring-[var(--color-primary)] ring-opacity-50' : ''
               }`}
@@ -295,19 +385,6 @@ export function MultiViewCanvas() {
                 transition: 'width 0.2s, height 0.2s',
               }}
             >
-              {gridEnabled && (
-                <div
-                  className="absolute inset-0 pointer-events-none opacity-20"
-                  style={{
-                    backgroundImage: `
-                      linear-gradient(to right, #94a3b8 1px, transparent 1px),
-                      linear-gradient(to bottom, #94a3b8 1px, transparent 1px)
-                    `,
-                    backgroundSize: `${20 * scale}px ${20 * scale}px`,
-                  }}
-                />
-              )}
-
               <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
                 <canvas ref={canvasRef} />
               </div>
@@ -338,6 +415,17 @@ export function MultiViewCanvas() {
           </div>
         </div>
       </div>
+      
+      {/* Context Menu */}
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          componentId={contextMenu.componentId}
+          annotationId={contextMenu.annotationId}
+          onClose={closeContextMenu}
+        />
+      )}
     </div>
   );
 }
