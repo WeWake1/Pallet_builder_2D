@@ -6,16 +6,10 @@ import { MobileToolbar } from './components/Toolbar/MobileToolbar';
 import { SpecificationPanel } from './components/Specification/SpecificationPanel';
 import { PropertiesPanel } from './components/Sidebar/PropertiesPanel';
 import { isMobileDevice } from './utils/helpers';
-import { useSelectedComponent, useStore } from './store/useStore';
 
 function App() {
   const isMobile = isMobileDevice();
   const [showSpecModal, setShowSpecModal] = useState(false);
-  const selectedComponent = useSelectedComponent();
-  const selectedAnnotationId = useStore((state) => state.selectedAnnotationId);
-  
-  // Show properties panel when something is selected
-  const showPropertiesPanel = !isMobile && (selectedComponent || selectedAnnotationId);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--color-background)] overflow-hidden">
@@ -36,8 +30,8 @@ function App() {
           <MultiViewCanvas />
         </main>
         
-        {/* Right Sidebar - Properties Panel */}
-        {showPropertiesPanel && (
+        {/* Right Sidebar - Properties Panel (always visible on desktop) */}
+        {!isMobile && (
           <aside className="w-64 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
             <PropertiesPanel />
           </aside>

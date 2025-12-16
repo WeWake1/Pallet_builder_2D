@@ -5,15 +5,18 @@ import { VIEW_LABELS, ZOOM_LIMITS, A4_WIDTH_PX, A4_HEIGHT_PX, COMPONENT_DEFINITI
 import type { ViewType, ComponentType } from '../../types';
 import * as fabric from 'fabric';
 import { ContextMenu } from './ContextMenu';
+import { WorkspaceRuler } from './WorkspaceRuler';
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
+const RULER_SIZE = 24; // Must match WorkspaceRuler
 
 // Small preview component for each view
 function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: boolean; onClick: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.StaticCanvas | null>(null);
-  const { components } = useStore();
+  const { components, canvas: canvasState } = useStore();
   const viewComponents = components[view];
+  const isDarkMode = canvasState.darkMode;
 
   // Initialize static canvas
   useEffect(() => {
@@ -22,7 +25,7 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
     const canvas = new fabric.StaticCanvas(canvasRef.current, {
       width: A4_WIDTH_PX,
       height: A4_HEIGHT_PX,
-      backgroundColor: '#ffffff',
+      backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
     });
 
     fabricRef.current = canvas;
@@ -31,7 +34,16 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
       canvas.dispose();
       fabricRef.current = null;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Update background on dark mode change
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.backgroundColor = isDarkMode ? '#1e293b' : '#ffffff';
+    canvas.renderAll();
+  }, [isDarkMode]);
 
   // Render components
   useEffect(() => {
@@ -39,7 +51,7 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
     if (!canvas) return;
 
     canvas.clear();
-    canvas.backgroundColor = '#ffffff';
+    canvas.backgroundColor = isDarkMode ? '#1e293b' : '#ffffff';
 
     viewComponents.forEach((comp) => {
       const colors = COMPONENT_COLORS[comp.type] || { fill: '#cccccc', stroke: '#999999' };
@@ -63,7 +75,7 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
     });
 
     canvas.renderAll();
-  }, [viewComponents]);
+  }, [viewComponents, isDarkMode]);
 
   const scale = 0.12; // Small preview scale
 
@@ -92,11 +104,15 @@ export function MultiViewCanvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
-  const { canvas, setActiveView, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, copyComponent, pasteComponent } = useStore();
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const { canvas, setActiveView, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent } = useStore();
   const { activeView, zoom } = canvas;
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 });
   const [isDragOver, setIsDragOver] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; componentId: string | null; annotationId: string | null } | null>(null);
+  const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
+  const [, setScrollOffset] = useState({ x: 0, y: 0 });
   const viewComponents = useActiveViewComponents();
 
   const canvasWidth = A4_WIDTH_PX;
@@ -141,11 +157,27 @@ export function MultiViewCanvas() {
           height: containerRef.current.clientHeight,
         });
       }
+      if (workspaceRef.current) {
+        setWorkspaceSize({
+          width: workspaceRef.current.clientWidth,
+          height: workspaceRef.current.clientHeight,
+        });
+      }
     };
 
     updateSize();
     window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    
+    // Also observe workspace area for size changes
+    const resizeObserver = new ResizeObserver(updateSize);
+    if (workspaceRef.current) {
+      resizeObserver.observe(workspaceRef.current);
+    }
+    
+    return () => {
+      window.removeEventListener('resize', updateSize);
+      resizeObserver.disconnect();
+    };
   }, []);
 
   // Handle delete for multiple selected components and layer ordering
@@ -160,6 +192,13 @@ export function MultiViewCanvas() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         undo();
+        return;
+      }
+      
+      // Redo: Ctrl/Cmd + Shift + Z or Ctrl/Cmd + Y
+      if ((e.ctrlKey || e.metaKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
+        e.preventDefault();
+        redo();
         return;
       }
       
@@ -224,7 +263,7 @@ export function MultiViewCanvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedComponentIds, selectedAnnotationId, deleteComponent, deleteAnnotation, bringToFront, bringForward, sendToBack, sendBackward, undo, copyComponent, pasteComponent]);
+  }, [selectedComponentIds, selectedAnnotationId, deleteComponent, deleteAnnotation, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -279,6 +318,26 @@ export function MultiViewCanvas() {
       view: activeView,
     });
   }, [addComponent, activeView, scale]);
+
+  // Handle mouse move on canvas for ruler tracking
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
+    const wrapper = canvasWrapperRef.current;
+    if (!wrapper) return;
+    
+    const rect = wrapper.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / (scale * zoom);
+    const y = (e.clientY - rect.top) / (scale * zoom);
+    
+    // Convert to mm
+    const xMm = x / CANVAS_SCALE;
+    const yMm = y / CANVAS_SCALE;
+    
+    setCursorPosition({ x: xMm, y: yMm });
+  }, [scale, zoom]);
+
+  const handleCanvasMouseLeave = useCallback(() => {
+    setCursorPosition(null);
+  }, []);
 
   // Handle right-click context menu
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -364,53 +423,108 @@ export function MultiViewCanvas() {
           ))}
         </div>
 
-        {/* Canvas Area */}
+        {/* Canvas Area with Workspace Rulers */}
         <div
-          className="flex-1 overflow-auto flex items-center justify-center p-4"
+          ref={workspaceRef}
+          className="flex-1 flex flex-col overflow-hidden"
           onWheel={handleWheel}
         >
-          <div className="relative">
-            <div
-              ref={canvasWrapperRef}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onContextMenu={handleContextMenu}
-              className={`bg-white shadow-lg relative overflow-hidden transition-all ${
-                isDragOver ? 'ring-4 ring-[var(--color-primary)] ring-opacity-50' : ''
-              }`}
+          {/* Top ruler row */}
+          <div className="flex shrink-0">
+            {/* Corner piece */}
+            <div 
+              className="shrink-0 bg-[var(--color-surface)] border-r border-b border-[var(--color-border)] flex items-center justify-center"
+              style={{ width: RULER_SIZE, height: RULER_SIZE }}
+            >
+              <span className="text-[8px] text-[var(--color-text-muted)]">mm</span>
+            </div>
+            {/* Horizontal ruler spanning full workspace width */}
+            <div className="flex-1 overflow-hidden">
+              <WorkspaceRuler 
+                orientation="horizontal" 
+                containerSize={workspaceSize.width > 0 ? workspaceSize.width - RULER_SIZE : containerSize.width - 100}
+                canvasOffset={(workspaceSize.width > 0 ? workspaceSize.width - RULER_SIZE : containerSize.width - 100) / 2 - (displayWidth * zoom) / 2}
+                canvasSize={displayWidth * zoom}
+                zoom={scale}
+                cursorPosition={cursorPosition} 
+              />
+            </div>
+          </div>
+          
+          {/* Main workspace area with vertical ruler and canvas */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* Vertical ruler */}
+            <div className="shrink-0 overflow-hidden">
+              <WorkspaceRuler 
+                orientation="vertical" 
+                containerSize={workspaceSize.height > 0 ? workspaceSize.height - RULER_SIZE : containerSize.height - 150}
+                canvasOffset={(workspaceSize.height > 0 ? workspaceSize.height - RULER_SIZE : containerSize.height - 150) / 2 - (displayHeight * zoom) / 2}
+                canvasSize={displayHeight * zoom}
+                zoom={scale}
+                cursorPosition={cursorPosition} 
+              />
+            </div>
+            
+            {/* Scrollable canvas area */}
+            <div 
+              className="flex-1 overflow-auto flex items-center justify-center bg-[var(--color-background)]"
+              onScroll={(e) => {
+                const target = e.target as HTMLDivElement;
+                setScrollOffset({ x: target.scrollLeft, y: target.scrollTop });
+              }}
               style={{
-                width: displayWidth * zoom,
-                height: displayHeight * zoom,
-                transition: 'width 0.2s, height 0.2s',
+                backgroundImage: `radial-gradient(circle, var(--color-border) 1px, transparent 1px)`,
+                backgroundSize: '20px 20px',
               }}
             >
-              <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-                <canvas ref={canvasRef} />
+              <div className="relative p-8">
+                {/* Canvas */}
+                <div
+                  ref={canvasWrapperRef}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onContextMenu={handleContextMenu}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseLeave={handleCanvasMouseLeave}
+                  className={`bg-white shadow-xl relative overflow-hidden transition-all ${
+                    isDragOver ? 'ring-4 ring-[var(--color-primary)] ring-opacity-50' : ''
+                  }`}
+                  style={{
+                    width: displayWidth * zoom,
+                    height: displayHeight * zoom,
+                    transition: 'width 0.2s, height 0.2s',
+                  }}
+                >
+                  <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+                    <canvas ref={canvasRef} />
+                  </div>
+
+                  {isDragOver && (
+                    <div className="absolute inset-0 bg-[var(--color-primary)] bg-opacity-10 flex items-center justify-center pointer-events-none">
+                      <div className="bg-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium text-[var(--color-primary)]">
+                        Drop to add component
+                      </div>
+                    </div>
+                  )}
+
+                  {viewComponents.length === 0 && !isDragOver && (
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div className="text-center text-[var(--color-text-muted)]">
+                        <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+                        </svg>
+                        <p className="text-sm">Drag components here</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Paper size label */}
+                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-xs text-[var(--color-text-muted)] whitespace-nowrap bg-[var(--color-background)] px-2 rounded">
+                  A4 (210 × 297 mm)
+                </div>
               </div>
-
-              {isDragOver && (
-                <div className="absolute inset-0 bg-[var(--color-primary)] bg-opacity-10 flex items-center justify-center pointer-events-none">
-                  <div className="bg-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium text-[var(--color-primary)]">
-                    Drop to add component
-                  </div>
-                </div>
-              )}
-
-              {viewComponents.length === 0 && !isDragOver && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <div className="text-center text-[var(--color-text-muted)]">
-                    <svg className="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-                    </svg>
-                    <p className="text-sm">Drag components here</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-[var(--color-text-muted)] whitespace-nowrap">
-              A4 (210 × 297 mm)
             </div>
           </div>
         </div>

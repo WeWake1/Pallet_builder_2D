@@ -1,5 +1,5 @@
 import { useStore, useSelectedComponent } from '../../store/useStore';
-import { COMPONENT_COLORS } from '../../constants';
+import { COMPONENT_COLORS, A4_WIDTH_MM, A4_HEIGHT_MM } from '../../constants';
 
 // Preset color options
 const COLOR_PRESETS = [
@@ -15,16 +15,132 @@ const COLOR_PRESETS = [
   { name: 'Red', fill: '#ef4444', stroke: '#dc2626' },
 ];
 
+// Grid size presets
+const GRID_SIZE_OPTIONS = [
+  { value: 5, label: '5mm (Fine)' },
+  { value: 10, label: '10mm (Standard)' },
+  { value: 20, label: '20mm (Coarse)' },
+];
+
+// Canvas settings panel when nothing is selected
+function CanvasSettingsPanel() {
+  const { canvas, toggleGrid, toggleSnap, setGridSize, toggleDarkMode } = useStore();
+  
+  return (
+    <div className="p-4 space-y-4">
+      {/* Canvas Info */}
+      <div>
+        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+          Canvas Settings
+        </h4>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between items-center py-1 px-2 bg-[var(--color-surface-hover)] rounded">
+            <span className="text-[var(--color-text-muted)]">Paper Size</span>
+            <span className="font-medium text-[var(--color-text)]">{A4_WIDTH_MM} × {A4_HEIGHT_MM} mm</span>
+          </div>
+          <div className="flex justify-between items-center py-1 px-2 bg-[var(--color-surface-hover)] rounded">
+            <span className="text-[var(--color-text-muted)]">Current View</span>
+            <span className="font-medium text-[var(--color-text)] capitalize">{canvas.activeView}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid Settings */}
+      <div>
+        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+          Grid
+        </h4>
+        <div className="space-y-3">
+          {/* Show Grid */}
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-[var(--color-text)]">Show Grid</span>
+            <button
+              onClick={toggleGrid}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                canvas.gridEnabled ? 'bg-[var(--color-primary)]' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                  canvas.gridEnabled ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </label>
+
+          {/* Snap to Grid */}
+          <label className="flex items-center justify-between cursor-pointer">
+            <span className="text-sm text-[var(--color-text)]">Snap to Grid</span>
+            <button
+              onClick={toggleSnap}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                canvas.snapToGrid ? 'bg-[var(--color-primary)]' : 'bg-gray-300 dark:bg-gray-600'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                  canvas.snapToGrid ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </label>
+
+          {/* Grid Size */}
+          <div>
+            <label className="text-sm text-[var(--color-text)]">Grid Size</label>
+            <select
+              value={canvas.gridSize}
+              onChange={(e) => setGridSize(Number(e.target.value))}
+              className="w-full mt-1 h-8 px-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            >
+              {GRID_SIZE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Appearance */}
+      <div>
+        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+          Appearance
+        </h4>
+        <label className="flex items-center justify-between cursor-pointer">
+          <span className="text-sm text-[var(--color-text)]">Dark Mode</span>
+          <button
+            onClick={toggleDarkMode}
+            className={`relative w-10 h-5 rounded-full transition-colors ${
+              canvas.darkMode ? 'bg-[var(--color-primary)]' : 'bg-gray-300 dark:bg-gray-600'
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                canvas.darkMode ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </label>
+      </div>
+
+      {/* Tip */}
+      <div className="pt-2 border-t border-[var(--color-border)]">
+        <p className="text-xs text-[var(--color-text-muted)] italic">
+          💡 Tip: Select a component on the canvas to edit its properties
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function PropertiesPanel() {
   const { updateComponent, deleteComponent, duplicateComponent, bringToFront, bringForward, sendToBack, sendBackward } = useStore();
   const selectedComponent = useSelectedComponent();
 
   if (!selectedComponent) {
-    return (
-      <div className="p-4 text-center text-[var(--color-text-muted)]">
-        <p className="text-sm">Select a component to edit its properties</p>
-      </div>
-    );
+    return <CanvasSettingsPanel />;
   }
 
   // Use custom color if set, otherwise use default for component type

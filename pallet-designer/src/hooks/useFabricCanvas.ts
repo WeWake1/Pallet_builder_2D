@@ -138,7 +138,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const gridStateRef = useRef<{ enabled: boolean; size: number }>({ enabled: false, size: 10 });
   const updateAnnotationRef = useRef<(id: string, updates: Partial<TextAnnotation | DimensionAnnotation | CalloutAnnotation>) => void>(() => {});
+  const captureHistoryRef = useRef<() => void>(() => {});
   const isUpdatingSelectionRef = useRef(false); // Prevent circular selection updates
+  const isDraggingRef = useRef(false); // Track if we're currently dragging (for history capture)
   const { 
     components,
     annotations,
@@ -148,13 +150,15 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     selectComponent,
     selectComponents,
     selectAnnotation,
+    captureHistory,
     selectedComponentIds 
   } = useStore();
 
   // Keep refs in sync with store functions
   useEffect(() => {
     updateAnnotationRef.current = updateAnnotation;
-  }, [updateAnnotation]);
+    captureHistoryRef.current = captureHistory;
+  }, [updateAnnotation, captureHistory]);
 
   // Keep snap state ref in sync with store (separate from grid visibility)
   useEffect(() => {
@@ -269,6 +273,23 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const currentAngle = obj.angle || 0;
       const snappedAngle = Math.round(currentAngle / ROTATION_SNAP_ANGLE) * ROTATION_SNAP_ANGLE;
       obj.set({ angle: snappedAngle % 360 });
+    });
+
+    // Capture history when user starts interacting with an object
+    // This ensures we save state BEFORE the modification, like Excalidraw
+    canvas.on('mouse:down', (e) => {
+      if (e.target) {
+        const data = getObjectData(e.target);
+        // Only capture history for real objects (not grid, labels)
+        if (data?.id && !data.isGrid && !data.isLabel) {
+          isDraggingRef.current = true;
+          captureHistoryRef.current();
+        }
+      }
+    });
+
+    canvas.on('mouse:up', () => {
+      isDraggingRef.current = false;
     });
 
     // Handle object moving - snap to grid when enabled
@@ -471,23 +492,41 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     
     // Draw grid if enabled
     if (canvasState.gridEnabled) {
-      const gridSize = canvasState.gridSize * CANVAS_SCALE; // Convert mm to pixels
-      const gridColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)';
-      const majorGridColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.15)';
+      const gridSizeMm = canvasState.gridSize; // Grid size in mm
+      const gridSizePx = gridSizeMm * CANVAS_SCALE; // Grid size in pixels
+      
+      // Colors
+      const minorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.06)';
+      const majorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)';
+      const borderColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.25)';
+      
       const gridLines: fabric.FabricObject[] = [];
       
-      // Calculate the max grid positions that fit within the canvas
-      // Only draw lines at exact grid intervals, not past the paper edge
-      const numVerticalLines = Math.floor(width / gridSize);
-      const numHorizontalLines = Math.floor(height / gridSize);
+      // Paper dimensions
+      const paperWidthMm = 210; // A4 width in mm
+      const paperHeightMm = 297; // A4 height in mm
       
-      // Vertical lines - from 0 to max that fits
-      for (let i = 0; i <= numVerticalLines; i++) {
-        const x = i * gridSize;
-        const isMajor = i % 5 === 0;
-        const line = new fabric.Line([x, 0, x, height], {
-          stroke: isMajor ? majorGridColor : gridColor,
-          strokeWidth: isMajor ? 1 : 0.5,
+      // Calculate number of lines (always starting from 0)
+      // We draw lines at 0, gridSize, 2*gridSize, etc.
+      // The last line should be at or before the paper edge
+      const maxVerticalIndex = Math.floor(paperWidthMm / gridSizeMm);
+      const maxHorizontalIndex = Math.floor(paperHeightMm / gridSizeMm);
+      
+      // Draw vertical lines
+      for (let i = 0; i <= maxVerticalIndex; i++) {
+        const xMm = i * gridSizeMm;
+        const xPx = xMm * CANVAS_SCALE;
+        
+        // Determine if this is a major line (every 5 grid cells = every 50mm for 10mm grid, etc)
+        const isMajor = (xMm % 50 === 0);
+        const isEdge = (i === 0 || i === maxVerticalIndex);
+        
+        // Vertical line from top to the last horizontal line position
+        const endY = maxHorizontalIndex * gridSizePx;
+        
+        const line = new fabric.Line([xPx, 0, xPx, endY], {
+          stroke: isEdge ? borderColor : (isMajor ? majorColor : minorColor),
+          strokeWidth: isEdge ? 1.5 : (isMajor ? 1 : 0.5),
           selectable: false,
           evented: false,
           excludeFromExport: true,
@@ -497,13 +536,21 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         gridLines.push(line);
       }
       
-      // Horizontal lines - from 0 to max that fits
-      for (let i = 0; i <= numHorizontalLines; i++) {
-        const y = i * gridSize;
-        const isMajor = i % 5 === 0;
-        const line = new fabric.Line([0, y, width, y], {
-          stroke: isMajor ? majorGridColor : gridColor,
-          strokeWidth: isMajor ? 1 : 0.5,
+      // Draw horizontal lines
+      for (let i = 0; i <= maxHorizontalIndex; i++) {
+        const yMm = i * gridSizeMm;
+        const yPx = yMm * CANVAS_SCALE;
+        
+        // Determine if this is a major line
+        const isMajor = (yMm % 50 === 0);
+        const isEdge = (i === 0 || i === maxHorizontalIndex);
+        
+        // Horizontal line from left to the last vertical line position
+        const endX = maxVerticalIndex * gridSizePx;
+        
+        const line = new fabric.Line([0, yPx, endX, yPx], {
+          stroke: isEdge ? borderColor : (isMajor ? majorColor : minorColor),
+          strokeWidth: isEdge ? 1.5 : (isMajor ? 1 : 0.5),
           selectable: false,
           evented: false,
           excludeFromExport: true,
@@ -512,23 +559,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         setObjectData(line, { id: `grid-h-${i}`, type: 'grid', isGrid: true });
         gridLines.push(line);
       }
-      
-      // Add paper edge border for clarity (visible boundary of the paper)
-      const borderColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)';
-      const paperBorder = new fabric.Rect({
-        left: 0,
-        top: 0,
-        width: width,
-        height: height,
-        fill: 'transparent',
-        stroke: borderColor,
-        strokeWidth: 1,
-        selectable: false,
-        evented: false,
-        excludeFromExport: true,
-      });
-      setObjectData(paperBorder, { id: 'paper-border', type: 'grid', isGrid: true });
-      gridLines.push(paperBorder);
       
       // Add all grid lines to canvas (at the back)
       gridLines.forEach((line) => {
@@ -660,7 +690,11 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         fontWeight: annotation.fontWeight,
         angle: annotation.rotation,
         editable: true,
-        selectable: true, // Explicitly enable selection
+        selectable: true,
+        evented: true,
+        hasControls: true,
+        hasBorders: true,
+        lockScalingFlip: true,
       });
       
       // Handle text editing - update store when editing is complete
@@ -772,7 +806,10 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         originY: 'center',
         angle: lineAngleDeg,
         centeredRotation: true,
-        selectable: true, // Explicitly enable selection
+        selectable: true,
+        evented: true,
+        hasControls: true,
+        hasBorders: true,
         lockScalingFlip: true,
       });
       
@@ -886,8 +923,11 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         top: anchorY,
         originX: 'left',
         originY: 'top',
-        subTargetCheck: true, // Allow clicking on sub-objects
-        selectable: true, // Explicitly enable selection
+        subTargetCheck: true,
+        selectable: true,
+        evented: true,
+        hasControls: true,
+        hasBorders: true,
       });
       
       // Handle text editing via double-click on group
@@ -953,6 +993,14 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       if (existingObj) {
         // Update existing annotation position without recreating
         // This preserves event handlers and interactivity
+        // Ensure selectability flags are always set
+        existingObj.set({
+          selectable: true,
+          evented: true,
+          hasControls: true,
+          hasBorders: true,
+        });
+        
         if (annotation.type === 'text') {
           existingObj.set({
             left: annotation.position.x * CANVAS_SCALE,
@@ -999,6 +1047,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           });
           
           canvas.add(annotationObj);
+          // Ensure annotations are on top of components
+          canvas.bringObjectToFront(annotationObj);
         }
       }
     });
@@ -1008,6 +1058,15 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const data = getObjectData(obj);
       if (data?.id && data.isAnnotation && !processedIds.has(data.id)) {
         canvas.remove(obj);
+      }
+    });
+
+    // Always bring ALL annotations to front (after components)
+    // This ensures annotations are always on top regardless of sync order
+    canvas.getObjects().forEach((obj) => {
+      const data = getObjectData(obj);
+      if (data?.isAnnotation) {
+        canvas.bringObjectToFront(obj);
       }
     });
 

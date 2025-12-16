@@ -91,6 +91,9 @@ const initialState: Omit<AppState, keyof AppActions> = {
 export const useStore = create<AppState & AppActions>((set, get) => ({
   ...initialState,
 
+  // Helper to save current state to history before a mutation
+  // This follows the Excalidraw pattern of capturing state before changes
+  
   // Component actions
   addComponent: (componentData) => {
     const id = generateId();
@@ -98,7 +101,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
     const { canvas, components, annotations } = get();
     const view = canvas.activeView;
     
-    // Save current state to history (both components and annotations)
+    // Save current state to history before mutation
     set((state) => ({
       components: {
         ...state.components,
@@ -106,12 +109,14 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       },
       history: {
         past: [...state.history.past, { components, annotations }],
-        future: [],
+        future: [], // Clear future on new action
       },
     }));
   },
 
   updateComponent: (id, updates) => {
+    // Don't save history for every update (would create too many entries during drag)
+    // History is saved on object:modified in fabric canvas
     set((state) => {
       const newComponents = { ...state.components };
       
@@ -145,7 +150,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         selectedComponentIds: state.selectedComponentIds.filter((cid) => cid !== id),
         history: {
           past: [...state.history.past, { components, annotations }],
-          future: [],
+          future: [], // Clear future on new action
         },
       };
     });
@@ -249,18 +254,24 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   addAnnotation: (annotationData) => {
     const id = generateId();
     const annotation = { ...annotationData, id };
-    const { canvas } = get();
+    const { canvas, components, annotations } = get();
     const view = canvas.activeView;
     
+    // Save current state to history before mutation
     set((state) => ({
       annotations: {
         ...state.annotations,
         [view]: [...state.annotations[view], annotation],
       },
+      history: {
+        past: [...state.history.past, { components, annotations }],
+        future: [], // Clear future on new action
+      },
     }));
   },
 
   updateAnnotation: (id, updates) => {
+    // Don't save history for every update (would create too many entries during drag)
     set((state) => {
       const newAnnotations = { ...state.annotations };
       
@@ -268,7 +279,6 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         const index = newAnnotations[view].findIndex((a) => a.id === id);
         if (index !== -1) {
           const existing = newAnnotations[view][index];
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           newAnnotations[view] = [
             ...newAnnotations[view].slice(0, index),
             { ...existing, ...updates } as typeof existing,
@@ -283,6 +293,7 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   deleteAnnotation: (id) => {
+    const { components, annotations } = get();
     set((state) => {
       const newAnnotations = { ...state.annotations };
       
@@ -293,6 +304,10 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       return {
         annotations: newAnnotations,
         selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,
+        history: {
+          past: [...state.history.past, { components, annotations }],
+          future: [], // Clear future on new action
+        },
       };
     });
   },
@@ -477,6 +492,18 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       history: {
         past: [...state.history.past, { components: state.components, annotations: state.annotations }],
         future: newFuture,
+      },
+    }));
+  },
+
+  // Capture current state to history - call this before a mutation
+  // This allows canvas operations to save history before modifying state
+  captureHistory: () => {
+    const { components, annotations } = get();
+    set((state) => ({
+      history: {
+        past: [...state.history.past, { components, annotations }],
+        future: [], // Clear future on new action
       },
     }));
   },

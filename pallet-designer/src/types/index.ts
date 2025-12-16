@@ -239,6 +239,7 @@ export interface AppActions {
   // History actions
   undo: () => void;
   redo: () => void;
+  captureHistory: () => void; // Capture current state before a mutation
   
   // Reset
   resetCanvas: () => void;
