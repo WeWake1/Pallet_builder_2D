@@ -1,10 +1,9 @@
 import { useState, useCallback } from 'react';
-import { useStore, useSelectedComponent } from '../../store/useStore';
+import { useStore } from '../../store/useStore';
 import { COMPONENT_DEFINITIONS, COMPONENT_COLORS } from '../../constants';
-import { PropertiesPanel } from './PropertiesPanel';
 import type { ComponentType, AnnotationType } from '../../types';
 
-type TabType = 'components' | 'properties' | 'annotations';
+type TabType = 'components' | 'annotations';
 
 // Annotation tool definitions
 const ANNOTATION_TOOLS: { type: AnnotationType; name: string; icon: string; description: string }[] = [
@@ -14,22 +13,15 @@ const ANNOTATION_TOOLS: { type: AnnotationType; name: string; icon: string; desc
 ];
 
 export function Sidebar() {
-  const { canvas, addComponent, addAnnotation, selectComponent, toggleGrid } = useStore();
+  const { canvas, addComponent, addAnnotation, toggleGrid } = useStore();
   const { activeView, gridEnabled } = canvas;
-  const selectedComponent = useSelectedComponent();
   const [activeTab, setActiveTab] = useState<TabType>('components');
   const [draggedComponent, setDraggedComponent] = useState<ComponentType | null>(null);
 
-  // Handle tab change - deselect component when switching away from properties
+  // Handle tab change
   const handleTabChange = (tab: TabType) => {
-    if (tab !== 'properties') {
-      selectComponent(null); // Deselect component when switching to other tabs
-    }
     setActiveTab(tab);
   };
-
-  // If component selected and we're not explicitly on another tab, show properties
-  const effectiveTab = activeTab;
 
   const handleAddComponent = (type: ComponentType) => {
     const definition = COMPONENT_DEFINITIONS.find((d) => d.type === type);
@@ -94,7 +86,7 @@ export function Sidebar() {
         <button
           onClick={() => handleTabChange('components')}
           className={`flex-1 py-2 text-sm font-medium transition-colors ${
-            effectiveTab === 'components'
+            activeTab === 'components'
               ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
               : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
           }`}
@@ -102,22 +94,9 @@ export function Sidebar() {
           Components
         </button>
         <button
-          onClick={() => handleTabChange('properties')}
-          className={`flex-1 py-2 text-sm font-medium transition-colors ${
-            effectiveTab === 'properties'
-              ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
-              : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-          }`}
-        >
-          Properties
-          {selectedComponent && (
-            <span className="ml-1 w-2 h-2 bg-[var(--color-primary)] rounded-full inline-block" />
-          )}
-        </button>
-        <button
           onClick={() => handleTabChange('annotations')}
           className={`flex-1 py-2 text-sm font-medium transition-colors ${
-            effectiveTab === 'annotations'
+            activeTab === 'annotations'
               ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)]'
               : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
           }`}
@@ -128,7 +107,7 @@ export function Sidebar() {
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto">
-        {effectiveTab === 'components' && (
+        {activeTab === 'components' && (
           <div className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] mb-3">
               Click to add or drag onto canvas
@@ -178,7 +157,7 @@ export function Sidebar() {
           </div>
         )}
         
-        {effectiveTab === 'annotations' && (
+        {activeTab === 'annotations' && (
           <div className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] mb-3">
               Add labels and measurements
@@ -190,7 +169,7 @@ export function Sidebar() {
                   onClick={() => handleAddAnnotation(tool.type)}
                   className="w-full flex items-center gap-3 p-3 rounded-lg border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-surface-hover)] transition-all text-left group"
                 >
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-gray-100 dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-500 shrink-0">
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center text-lg bg-gray-200 dark:bg-gray-600 border-2 border-gray-300 dark:border-gray-500 text-gray-700 dark:text-gray-200 shrink-0">
                     {tool.icon}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -214,11 +193,7 @@ export function Sidebar() {
             </div>
           </div>
         )}
-        
-        {effectiveTab === 'properties' && <PropertiesPanel />}
       </div>
-
-
 
       {/* Canvas Settings */}
       <div className="p-4 border-t border-[var(--color-border)]">
@@ -250,4 +225,3 @@ export function Sidebar() {
     </div>
   );
 }
-

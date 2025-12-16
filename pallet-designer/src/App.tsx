@@ -4,11 +4,18 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { MultiViewCanvas } from './components/Canvas/MultiViewCanvas';
 import { MobileToolbar } from './components/Toolbar/MobileToolbar';
 import { SpecificationPanel } from './components/Specification/SpecificationPanel';
+import { PropertiesPanel } from './components/Sidebar/PropertiesPanel';
 import { isMobileDevice } from './utils/helpers';
+import { useSelectedComponent, useStore } from './store/useStore';
 
 function App() {
   const isMobile = isMobileDevice();
   const [showSpecModal, setShowSpecModal] = useState(false);
+  const selectedComponent = useSelectedComponent();
+  const selectedAnnotationId = useStore((state) => state.selectedAnnotationId);
+  
+  // Show properties panel when something is selected
+  const showPropertiesPanel = !isMobile && (selectedComponent || selectedAnnotationId);
 
   return (
     <div className="h-screen flex flex-col bg-[var(--color-background)] overflow-hidden">
@@ -17,9 +24,9 @@ function App() {
       
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Hidden on mobile, shown on desktop */}
+        {/* Left Sidebar - Components & Labels */}
         {!isMobile && (
-          <aside className="w-64 border-r border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
+          <aside className="w-56 border-r border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
             <Sidebar />
           </aside>
         )}
@@ -28,6 +35,13 @@ function App() {
         <main className="flex-1 overflow-hidden">
           <MultiViewCanvas />
         </main>
+        
+        {/* Right Sidebar - Properties Panel */}
+        {showPropertiesPanel && (
+          <aside className="w-64 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
+            <PropertiesPanel />
+          </aside>
+        )}
       </div>
       
       {/* Mobile Bottom Toolbar */}

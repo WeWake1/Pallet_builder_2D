@@ -35,6 +35,10 @@ export interface PalletComponent {
   rotation: number; // degrees
   view: ViewType;
   label?: string;
+  color?: {
+    fill: string;
+    stroke: string;
+  };
 }
 
 // Text annotation on canvas

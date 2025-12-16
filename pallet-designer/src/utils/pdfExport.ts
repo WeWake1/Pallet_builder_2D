@@ -1,210 +1,455 @@
 import jsPDF from 'jspdf';
-import type { PalletComponent, ViewType, PalletSpecification, BrandingConfig } from '../types';
-import { VIEW_LABELS } from '../constants';
+import type { PalletComponent, ViewType, PalletSpecification, BrandingConfig, Annotation } from '../types';
+import { VIEW_LABELS, CANVAS_SCALE, COMPONENT_COLORS, A4_WIDTH_PX, A4_HEIGHT_PX, DEFAULT_GRID_SIZE } from '../constants';
+import * as fabric from 'fabric';
 
 interface ExportOptions {
   components: Record<ViewType, PalletComponent[]>;
+  annotations: Record<ViewType, Annotation[]>;
   specification: PalletSpecification;
   branding: BrandingConfig;
   currentPreset: string;
-  canvasDataUrl?: string; // Optional current canvas snapshot
 }
 
-// Helper to draw a component on PDF
-function drawComponent(
-  pdf: jsPDF,
-  component: PalletComponent,
-  offsetX: number,
-  offsetY: number,
-  scale: number
-) {
-  const x = offsetX + component.position.x * scale;
-  const y = offsetY + component.position.y * scale;
-  const w = component.dimensions.width * scale;
-  const h = component.dimensions.length * scale;
+const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
 
-  // Set colors based on component type
-  const colors: Record<string, { fill: number[]; stroke: number[] }> = {
-    'deck-board': { fill: [212, 165, 116], stroke: [139, 105, 20] },
-    'stringer': { fill: [196, 149, 106], stroke: [139, 105, 20] },
-    'block': { fill: [229, 196, 154], stroke: [139, 105, 20] },
-    'notched-block': { fill: [219, 184, 138], stroke: [139, 105, 20] },
-    'chamfered-block': { fill: [217, 176, 128], stroke: [139, 105, 20] },
-    'lead-board': { fill: [207, 168, 112], stroke: [139, 105, 20] },
-  };
-
-  const color = colors[component.type] || colors['block'];
-  
-  // Draw filled rectangle
-  pdf.setFillColor(color.fill[0], color.fill[1], color.fill[2]);
-  pdf.setDrawColor(color.stroke[0], color.stroke[1], color.stroke[2]);
-  pdf.setLineWidth(0.3);
-  pdf.rect(x, y, w, h, 'FD');
-}
-
-// Draw a view with title
-function drawView(
-  pdf: jsPDF,
-  view: ViewType,
+// Render a view to a canvas and return as data URL
+async function renderViewToDataUrl(
   components: PalletComponent[],
-  startX: number,
-  startY: number,
-  viewWidth: number,
-  viewHeight: number,
-  scale: number
-) {
-  const padding = 3;
-  const titleHeight = 6;
+  annotations: Annotation[]
+): Promise<string> {
+  // Create an off-screen canvas
+  const canvas = new fabric.StaticCanvas(undefined, {
+    width: A4_WIDTH_PX,
+    height: A4_HEIGHT_PX,
+    backgroundColor: '#ffffff',
+  });
+
+  // Draw grid
+  const gridSizePx = DEFAULT_GRID_SIZE * CANVAS_SCALE;
+  const maxGridLinesX = Math.floor(A4_WIDTH_PX / gridSizePx);
+  const maxGridLinesY = Math.floor(A4_HEIGHT_PX / gridSizePx);
   
-  // View title
-  pdf.setFontSize(9);
-  pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(30, 122, 201);
-  pdf.text(`${VIEW_LABELS[view].label} (${VIEW_LABELS[view].arrow})`, startX, startY);
-  
-  // View border
-  pdf.setDrawColor(200, 200, 200);
-  pdf.setLineWidth(0.2);
-  pdf.rect(startX, startY + 2, viewWidth, viewHeight - titleHeight);
-  
+  for (let i = 0; i <= maxGridLinesX; i++) {
+    const x = i * gridSizePx;
+    const line = new fabric.Line([x, 0, x, maxGridLinesY * gridSizePx], {
+      stroke: '#e5e5e5',
+      strokeWidth: 0.5,
+      selectable: false,
+      evented: false,
+    });
+    canvas.add(line);
+  }
+  for (let i = 0; i <= maxGridLinesY; i++) {
+    const y = i * gridSizePx;
+    const line = new fabric.Line([0, y, maxGridLinesX * gridSizePx, y], {
+      stroke: '#e5e5e5',
+      strokeWidth: 0.5,
+      selectable: false,
+      evented: false,
+    });
+    canvas.add(line);
+  }
+
+  // Draw paper boundary
+  canvas.add(new fabric.Rect({
+    left: 0,
+    top: 0,
+    width: A4_WIDTH_PX,
+    height: A4_HEIGHT_PX,
+    fill: 'transparent',
+    stroke: '#cccccc',
+    strokeWidth: 1,
+    selectable: false,
+    evented: false,
+  }));
+
   // Draw components
   components.forEach((comp) => {
-    drawComponent(pdf, comp, startX + padding, startY + titleHeight, scale);
+    // Use custom color if set, otherwise use default for component type
+    const colors = comp.color || COMPONENT_COLORS[comp.type as keyof typeof COMPONENT_COLORS] || { fill: '#cccccc', stroke: '#999999' };
+    const w = comp.dimensions.width * CANVAS_SCALE;
+    const h = comp.dimensions.length * CANVAS_SCALE;
+    // Position is stored as top-left but we draw with center origin
+    const centerX = comp.position.x * CANVAS_SCALE + w / 2;
+    const centerY = comp.position.y * CANVAS_SCALE + h / 2;
+    const rotation = comp.rotation || 0;
+
+    let shape: fabric.FabricObject;
+    
+    if (comp.type === 'notched-block') {
+      const notchWidth = w * 0.3;
+      const notchHeight = h * 0.25;
+      const pathData = `M ${-w/2} ${-h/2} L ${w/2 - notchWidth} ${-h/2} L ${w/2 - notchWidth} ${-h/2 + notchHeight} L ${w/2} ${-h/2 + notchHeight} L ${w/2} ${h/2} L ${-w/2} ${h/2} Z`;
+      shape = new fabric.Path(pathData, {
+        left: centerX,
+        top: centerY,
+        fill: colors.fill,
+        stroke: colors.stroke,
+        strokeWidth: 1,
+        originX: 'center',
+        originY: 'center',
+        angle: rotation,
+        selectable: false,
+        evented: false,
+      });
+    } else if (comp.type === 'chamfered-block') {
+      const chamferSize = Math.min(w, h) * 0.2;
+      const pathData = `M ${-w/2 + chamferSize} ${-h/2} L ${w/2 - chamferSize} ${-h/2} L ${w/2} ${-h/2 + chamferSize} L ${w/2} ${h/2 - chamferSize} L ${w/2 - chamferSize} ${h/2} L ${-w/2 + chamferSize} ${h/2} L ${-w/2} ${h/2 - chamferSize} L ${-w/2} ${-h/2 + chamferSize} Z`;
+      shape = new fabric.Path(pathData, {
+        left: centerX,
+        top: centerY,
+        fill: colors.fill,
+        stroke: colors.stroke,
+        strokeWidth: 1,
+        originX: 'center',
+        originY: 'center',
+        angle: rotation,
+        selectable: false,
+        evented: false,
+      });
+    } else {
+      shape = new fabric.Rect({
+        left: centerX,
+        top: centerY,
+        width: w,
+        height: h,
+        fill: colors.fill,
+        stroke: colors.stroke,
+        strokeWidth: 1,
+        originX: 'center',
+        originY: 'center',
+        angle: rotation,
+        selectable: false,
+        evented: false,
+      });
+    }
+    canvas.add(shape);
+  });
+
+  // Draw annotations
+  annotations.forEach((ann) => {
+    if (ann.type === 'text') {
+      const x = ann.position.x * CANVAS_SCALE;
+      const y = ann.position.y * CANVAS_SCALE;
+      const text = new fabric.FabricText(ann.text || 'Text', {
+        left: x,
+        top: y,
+        fontSize: ann.fontSize || 14,
+        fill: ann.color || '#1f2937',
+        fontFamily: 'Arial',
+        fontWeight: ann.fontWeight || 'normal',
+        angle: ann.rotation || 0,
+        selectable: false,
+        evented: false,
+      });
+      canvas.add(text);
+    } else if (ann.type === 'dimension') {
+      const x = ann.startPosition.x * CANVAS_SCALE;
+      const y = ann.startPosition.y * CANVAS_SCALE;
+      const endX = ann.endPosition.x * CANVAS_SCALE;
+      const endY = ann.endPosition.y * CANVAS_SCALE;
+      
+      // Main dimension line
+      const line = new fabric.Line([x, y, endX, endY], {
+        stroke: '#3b82f6',
+        strokeWidth: 1.5,
+        selectable: false,
+        evented: false,
+      });
+      canvas.add(line);
+      
+      // End ticks
+      const tickSize = 8;
+      const angle = Math.atan2(endY - y, endX - x);
+      const perpAngle = angle + Math.PI / 2;
+      
+      const tick1 = new fabric.Line([
+        x - tickSize * Math.cos(perpAngle),
+        y - tickSize * Math.sin(perpAngle),
+        x + tickSize * Math.cos(perpAngle),
+        y + tickSize * Math.sin(perpAngle),
+      ], { stroke: '#3b82f6', strokeWidth: 1.5, selectable: false, evented: false });
+      
+      const tick2 = new fabric.Line([
+        endX - tickSize * Math.cos(perpAngle),
+        endY - tickSize * Math.sin(perpAngle),
+        endX + tickSize * Math.cos(perpAngle),
+        endY + tickSize * Math.sin(perpAngle),
+      ], { stroke: '#3b82f6', strokeWidth: 1.5, selectable: false, evented: false });
+      
+      canvas.add(tick1, tick2);
+      
+      // Dimension text
+      const midX = (x + endX) / 2;
+      const midY = (y + endY) / 2;
+      
+      if (ann.showValue) {
+        const dimText = new fabric.FabricText(`${Math.round(ann.value)} mm`, {
+          left: midX,
+          top: midY - 10,
+          fontSize: 11,
+          fill: '#3b82f6',
+          fontFamily: 'Arial',
+          originX: 'center',
+          backgroundColor: 'white',
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(dimText);
+      }
+    } else if (ann.type === 'callout') {
+      const x = ann.textPosition.x * CANVAS_SCALE;
+      const y = ann.textPosition.y * CANVAS_SCALE;
+      const anchorX = ann.anchorPosition.x * CANVAS_SCALE;
+      const anchorY = ann.anchorPosition.y * CANVAS_SCALE;
+      
+      // Leader line from anchor to text
+      const leaderLine = new fabric.Line([anchorX, anchorY, x, y + 15], {
+        stroke: '#f59e0b',
+        strokeWidth: 1,
+        selectable: false,
+        evented: false,
+      });
+      canvas.add(leaderLine);
+      
+      // Callout box
+      const boxWidth = 80;
+      const boxHeight = 30;
+      const box = new fabric.Rect({
+        left: x,
+        top: y,
+        width: boxWidth,
+        height: boxHeight,
+        fill: '#fffbeb',
+        stroke: '#f59e0b',
+        strokeWidth: 1,
+        rx: 4,
+        ry: 4,
+        selectable: false,
+        evented: false,
+      });
+      canvas.add(box);
+      
+      const calloutText = new fabric.FabricText(ann.text || 'Note', {
+        left: x + boxWidth / 2,
+        top: y + boxHeight / 2,
+        fontSize: 10,
+        fill: '#92400e',
+        fontFamily: 'Arial',
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false,
+      });
+      canvas.add(calloutText);
+    }
+  });
+
+  canvas.renderAll();
+  
+  // Convert to data URL
+  const dataUrl = canvas.toDataURL({
+    format: 'png',
+    multiplier: 1.5,
   });
   
-  // Component count
-  pdf.setFontSize(7);
-  pdf.setFont('helvetica', 'normal');
-  pdf.setTextColor(100, 100, 100);
-  pdf.text(
-    `${components.length} component${components.length !== 1 ? 's' : ''}`,
-    startX + viewWidth - 2,
-    startY + viewHeight - 1,
-    { align: 'right' }
-  );
+  canvas.dispose();
+  return dataUrl;
 }
 
-// Main export function
+// Main export function - creates a professional multi-view PDF
 export async function exportToPDF(options: ExportOptions): Promise<void> {
-  const { components, specification, branding, currentPreset } = options;
+  const { components, annotations, specification, branding, currentPreset } = options;
   
-  // Create PDF in A4 portrait
+  // Create PDF in A4 landscape for better view layout
   const pdf = new jsPDF({
-    orientation: 'portrait',
+    orientation: 'landscape',
     unit: 'mm',
     format: 'a4',
   });
   
-  const pageWidth = 210;
-  const pageHeight = 297;
-  const margin = 15;
+  const pageWidth = 297;
+  const pageHeight = 210;
+  const margin = 12;
   const contentWidth = pageWidth - 2 * margin;
+  const contentHeight = pageHeight - 2 * margin;
   
   // === HEADER ===
   let y = margin;
   
   // Company name
-  pdf.setFontSize(16);
+  pdf.setFontSize(18);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(30, 122, 201);
-  pdf.text(branding.companyName, margin, y);
+  pdf.text(branding.companyName, margin, y + 5);
   
   // Document title
-  y += 8;
-  pdf.setFontSize(12);
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Pallet Specification Drawing', margin, y);
+  pdf.setFontSize(14);
+  pdf.setTextColor(60, 60, 60);
+  pdf.text('Pallet Specification Drawing', margin, y + 12);
   
-  // Preset name
-  y += 5;
+  // Right side info
   pdf.setFontSize(9);
   pdf.setFont('helvetica', 'normal');
   pdf.setTextColor(100, 100, 100);
-  pdf.text(`Template: ${currentPreset.toUpperCase()}`, margin, y);
-  
-  // Date
   const today = new Date().toLocaleDateString('en-IN', {
     year: 'numeric',
-    month: 'long',
+    month: 'short',
     day: 'numeric',
   });
-  pdf.text(today, pageWidth - margin, y, { align: 'right' });
+  pdf.text(`Template: ${currentPreset.toUpperCase()}`, pageWidth - margin, y + 3, { align: 'right' });
+  pdf.text(`Date: ${today}`, pageWidth - margin, y + 8, { align: 'right' });
   
-  // Horizontal line
-  y += 3;
+  // Header line
+  y += 16;
   pdf.setDrawColor(30, 122, 201);
-  pdf.setLineWidth(0.5);
+  pdf.setLineWidth(0.8);
   pdf.line(margin, y, pageWidth - margin, y);
   
-  // === PALLET SPECIFICATIONS ===
-  y += 8;
+  // === SPECIFICATIONS BOX (left side) ===
+  y += 4;
+  const specBoxWidth = 65;
+  const specBoxHeight = contentHeight - 25;
+  
+  // Specs background
+  pdf.setFillColor(248, 250, 252);
+  pdf.setDrawColor(226, 232, 240);
+  pdf.setLineWidth(0.3);
+  pdf.roundedRect(margin, y, specBoxWidth, specBoxHeight, 2, 2, 'FD');
+  
+  // Specs title
   pdf.setFontSize(10);
   pdf.setFont('helvetica', 'bold');
-  pdf.setTextColor(0, 0, 0);
-  pdf.text('Pallet Specifications', margin, y);
+  pdf.setTextColor(30, 64, 175);
+  pdf.text('SPECIFICATIONS', margin + 3, y + 6);
   
-  y += 6;
+  // Specs content
   pdf.setFontSize(8);
   pdf.setFont('helvetica', 'normal');
+  pdf.setTextColor(50, 50, 50);
   
-  // Two columns for specs
-  const col1X = margin;
-  const col2X = margin + contentWidth / 2;
-  const lineSpacing = 4.5;
+  let specY = y + 14;
+  const specLineHeight = 5;
   
-  // Column 1
-  pdf.text(`Overall Dimensions: ${specification.overallDimensions.length} × ${specification.overallDimensions.width} × ${specification.overallDimensions.height} mm`, col1X, y);
-  pdf.text(`Classification: ${specification.classification.type}`, col1X, y + lineSpacing);
-  pdf.text(`Face: ${specification.classification.face}`, col1X, y + lineSpacing * 2);
-  pdf.text(`Entry: ${specification.classification.entry}`, col1X, y + lineSpacing * 3);
-  
-  // Column 2
-  pdf.text(`Material: ${specification.materials.lumberId}`, col2X, y);
-  pdf.text(`Surface: ${specification.materials.surface}`, col2X, y + lineSpacing);
-  pdf.text(`Static Load: ${specification.materials.staticLoadCapacity} kg`, col2X, y + lineSpacing * 2);
-  pdf.text(`Dynamic Load: ${specification.materials.dynamicLoadCapacity} kg`, col2X, y + lineSpacing * 3);
-  
-  // === VIEWS ===
-  y += lineSpacing * 4 + 8;
-  pdf.setFontSize(10);
+  // Dimensions section
   pdf.setFont('helvetica', 'bold');
-  pdf.text('Pallet Views', margin, y);
+  pdf.text('Dimensions', margin + 3, specY);
+  specY += specLineHeight;
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`L x W x H: ${specification.overallDimensions.length} x ${specification.overallDimensions.width} x ${specification.overallDimensions.height} mm`, margin + 3, specY);
   
-  y += 4;
+  specY += specLineHeight * 1.5;
   
-  // Calculate view grid layout - 2x2 grid
-  const viewAreaHeight = pageHeight - y - margin - 20; // Leave room for footer
-  const viewWidth = (contentWidth - 5) / 2; // 5mm gap between columns
-  const viewHeight = (viewAreaHeight - 5) / 2; // 5mm gap between rows
+  // Classification section
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Classification', margin + 3, specY);
+  specY += specLineHeight;
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`Type: ${specification.classification.type}`, margin + 3, specY);
+  specY += specLineHeight;
+  pdf.text(`Face: ${specification.classification.face}`, margin + 3, specY);
+  specY += specLineHeight;
+  pdf.text(`Entry: ${specification.classification.entry}`, margin + 3, specY);
   
-  // Scale factor for drawing (fit 300mm into viewWidth)
-  const maxPalletDim = Math.max(specification.overallDimensions.length, specification.overallDimensions.width);
-  const scale = (viewWidth - 10) / maxPalletDim; // 10mm padding in view
+  specY += specLineHeight * 1.5;
   
-  const views: ViewType[] = ['top', 'side', 'end', 'bottom'];
-  const positions = [
-    { x: margin, y: y },
-    { x: margin + viewWidth + 5, y: y },
-    { x: margin, y: y + viewHeight + 5 },
-    { x: margin + viewWidth + 5, y: y + viewHeight + 5 },
-  ];
+  // Material section
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Materials', margin + 3, specY);
+  specY += specLineHeight;
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`Lumber: ${specification.materials.lumberId}`, margin + 3, specY);
+  specY += specLineHeight;
+  pdf.text(`Surface: ${specification.materials.surface}`, margin + 3, specY);
   
-  views.forEach((view, index) => {
-    const pos = positions[index];
-    drawView(
-      pdf,
-      view,
-      components[view],
-      pos.x,
-      pos.y,
-      viewWidth,
-      viewHeight,
-      scale * 0.8 // Scale down a bit more for better fit
-    );
+  specY += specLineHeight * 1.5;
+  
+  // Load capacity section
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Load Capacity', margin + 3, specY);
+  specY += specLineHeight;
+  pdf.setFont('helvetica', 'normal');
+  pdf.text(`Static: ${specification.materials.staticLoadCapacity} kg`, margin + 3, specY);
+  specY += specLineHeight;
+  pdf.text(`Dynamic: ${specification.materials.dynamicLoadCapacity} kg`, margin + 3, specY);
+  
+  specY += specLineHeight * 1.5;
+  
+  // Component count section
+  pdf.setFont('helvetica', 'bold');
+  pdf.text('Components', margin + 3, specY);
+  specY += specLineHeight;
+  pdf.setFont('helvetica', 'normal');
+  VIEWS.forEach((view) => {
+    const count = components[view].length;
+    pdf.text(`${VIEW_LABELS[view].label}: ${count}`, margin + 3, specY);
+    specY += specLineHeight;
   });
   
+  // === VIEW GRID (right side) ===
+  const viewAreaLeft = margin + specBoxWidth + 8;
+  const viewAreaWidth = contentWidth - specBoxWidth - 8;
+  const viewAreaTop = y;
+  const viewAreaHeight = specBoxHeight;
+  
+  // 2x2 grid of views
+  const viewGap = 4;
+  const viewWidth = (viewAreaWidth - viewGap) / 2;
+  const viewHeight = (viewAreaHeight - viewGap) / 2;
+  
+  const viewPositions = [
+    { x: viewAreaLeft, y: viewAreaTop, view: 'top' as ViewType },
+    { x: viewAreaLeft + viewWidth + viewGap, y: viewAreaTop, view: 'side' as ViewType },
+    { x: viewAreaLeft, y: viewAreaTop + viewHeight + viewGap, view: 'end' as ViewType },
+    { x: viewAreaLeft + viewWidth + viewGap, y: viewAreaTop + viewHeight + viewGap, view: 'bottom' as ViewType },
+  ];
+  
+  // Render each view
+  for (const pos of viewPositions) {
+    // Render view to image
+    const viewDataUrl = await renderViewToDataUrl(
+      components[pos.view],
+      annotations[pos.view] || []
+    );
+    
+    // View background
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(200, 200, 200);
+    pdf.setLineWidth(0.3);
+    pdf.roundedRect(pos.x, pos.y, viewWidth, viewHeight, 1, 1, 'FD');
+    
+    // View title bar
+    pdf.setFillColor(241, 245, 249);
+    pdf.roundedRect(pos.x, pos.y, viewWidth, 6, 1, 1, 'F');
+    pdf.setFontSize(8);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(30, 64, 175);
+    pdf.text(`${VIEW_LABELS[pos.view].label} (${VIEW_LABELS[pos.view].arrow})`, pos.x + 2, pos.y + 4.5);
+    
+    // Add the rendered view image
+    const imgY = pos.y + 7;
+    const imgHeight = viewHeight - 8;
+    const imgWidth = viewWidth - 2;
+    
+    // Calculate aspect ratio to fit
+    const aspectRatio = A4_WIDTH_PX / A4_HEIGHT_PX;
+    let finalWidth = imgWidth;
+    let finalHeight = imgWidth / aspectRatio;
+    
+    if (finalHeight > imgHeight) {
+      finalHeight = imgHeight;
+      finalWidth = finalHeight * aspectRatio;
+    }
+    
+    const imgX = pos.x + 1 + (imgWidth - finalWidth) / 2;
+    const imgYCentered = imgY + (imgHeight - finalHeight) / 2;
+    
+    pdf.addImage(viewDataUrl, 'PNG', imgX, imgYCentered, finalWidth, finalHeight);
+  }
+  
   // === FOOTER ===
-  const footerY = pageHeight - margin;
+  const footerY = pageHeight - 6;
   pdf.setFontSize(7);
   pdf.setFont('helvetica', 'italic');
   pdf.setTextColor(150, 150, 150);
@@ -221,19 +466,20 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   );
   
   // Watermark (subtle)
-  pdf.setFontSize(60);
-  pdf.setTextColor(240, 240, 240);
-  pdf.setFont('helvetica', 'bold');
-  // Center watermark diagonally
-  pdf.text(
-    branding.watermarkText || branding.companyName,
-    pageWidth / 2,
-    pageHeight / 2,
-    {
-      align: 'center',
-      angle: 45,
-    }
-  );
+  if (branding.watermarkText) {
+    pdf.setFontSize(50);
+    pdf.setTextColor(245, 245, 245);
+    pdf.setFont('helvetica', 'bold');
+    pdf.text(
+      branding.watermarkText,
+      pageWidth / 2,
+      pageHeight / 2,
+      {
+        align: 'center',
+        angle: 30,
+      }
+    );
+  }
   
   // Save the PDF
   const fileName = `pallet-design-${currentPreset}-${Date.now()}.pdf`;

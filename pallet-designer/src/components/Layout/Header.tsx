@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useStore, useCanUndo, useCanRedo } from '../../store/useStore';
 import { PALLET_PRESETS } from '../../constants';
 import { exportToPDF } from '../../utils/pdfExport';
-import { getGlobalFabricCanvas } from '../../hooks/useFabricCanvas';
 
 interface HeaderProps {
   onOpenSpecs?: () => void;
@@ -17,6 +16,7 @@ export function Header({ onOpenSpecs }: HeaderProps) {
     resetCanvas, 
     branding,
     components,
+    annotations,
     specification,
     canvas,
     toggleDarkMode
@@ -29,16 +29,12 @@ export function Header({ onOpenSpecs }: HeaderProps) {
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
-      // Get the current canvas data URL
-      const fabricCanvas = getGlobalFabricCanvas();
-      const canvasDataUrl = fabricCanvas?.toDataURL({ format: 'png', multiplier: 2 }) || undefined;
-      
       await exportToPDF({
         components,
+        annotations,
         specification,
         branding,
         currentPreset,
-        canvasDataUrl
       });
     } catch (error) {
       console.error('Failed to export PDF:', error);

@@ -1,6 +1,20 @@
 import { useStore, useSelectedComponent } from '../../store/useStore';
 import { COMPONENT_COLORS } from '../../constants';
 
+// Preset color options
+const COLOR_PRESETS = [
+  { name: 'Natural Wood', fill: '#d4a574', stroke: '#8b6914' },
+  { name: 'Light Pine', fill: '#e5c49a', stroke: '#8b6914' },
+  { name: 'Dark Oak', fill: '#a67c52', stroke: '#5c4033' },
+  { name: 'Walnut', fill: '#6b4423', stroke: '#3d2314' },
+  { name: 'Cherry', fill: '#8b4513', stroke: '#5c2d0e' },
+  { name: 'White', fill: '#f5f5f5', stroke: '#cccccc' },
+  { name: 'Gray', fill: '#9ca3af', stroke: '#6b7280' },
+  { name: 'Blue', fill: '#3b82f6', stroke: '#1d4ed8' },
+  { name: 'Green', fill: '#22c55e', stroke: '#16a34a' },
+  { name: 'Red', fill: '#ef4444', stroke: '#dc2626' },
+];
+
 export function PropertiesPanel() {
   const { updateComponent, deleteComponent, duplicateComponent, bringToFront, bringForward, sendToBack, sendBackward } = useStore();
   const selectedComponent = useSelectedComponent();
@@ -13,7 +27,8 @@ export function PropertiesPanel() {
     );
   }
 
-  const colors = COMPONENT_COLORS[selectedComponent.type];
+  // Use custom color if set, otherwise use default for component type
+  const colors = selectedComponent.color || COMPONENT_COLORS[selectedComponent.type];
 
   const handleDimensionChange = (key: 'width' | 'thickness' | 'length', value: string) => {
     const numValue = parseInt(value, 10);
@@ -154,6 +169,73 @@ export function PropertiesPanel() {
           />
           <span className="text-xs text-[var(--color-text-muted)]">°</span>
         </div>
+      </div>
+
+      {/* Color */}
+      <div>
+        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+          Color
+        </h4>
+        {/* Color Presets */}
+        <div className="grid grid-cols-5 gap-1.5 mb-3">
+          {COLOR_PRESETS.map((preset) => (
+            <button
+              key={preset.name}
+              onClick={() => updateComponent(selectedComponent.id, { color: { fill: preset.fill, stroke: preset.stroke } })}
+              className={`w-8 h-8 rounded-md border-2 transition-all hover:scale-110 ${
+                colors.fill === preset.fill && colors.stroke === preset.stroke
+                  ? 'ring-2 ring-[var(--color-primary)] ring-offset-1'
+                  : ''
+              }`}
+              style={{ backgroundColor: preset.fill, borderColor: preset.stroke }}
+              title={preset.name}
+            />
+          ))}
+        </div>
+        {/* Custom Color Inputs */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Fill</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="color"
+                value={colors.fill}
+                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
+                className="w-8 h-8 rounded border border-[var(--color-border)] cursor-pointer"
+              />
+              <input
+                type="text"
+                value={colors.fill}
+                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
+                className="flex-1 h-8 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Stroke</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="color"
+                value={colors.stroke}
+                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
+                className="w-8 h-8 rounded border border-[var(--color-border)] cursor-pointer"
+              />
+              <input
+                type="text"
+                value={colors.stroke}
+                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
+                className="flex-1 h-8 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+          </div>
+        </div>
+        {/* Reset to Default */}
+        <button
+          onClick={() => updateComponent(selectedComponent.id, { color: undefined })}
+          className="mt-2 w-full h-7 rounded border border-[var(--color-border)] text-xs text-[var(--color-text-muted)] hover:bg-gray-50 transition-colors"
+        >
+          Reset to Default Color
+        </button>
       </div>
 
       {/* Layer Ordering */}

@@ -476,9 +476,15 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const majorGridColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.25)' : 'rgba(0, 0, 0, 0.15)';
       const gridLines: fabric.FabricObject[] = [];
       
-      // Vertical lines - from 0 to width (inclusive)
-      for (let x = 0; x <= width; x += gridSize) {
-        const isMajor = Math.round(x / gridSize) % 5 === 0;
+      // Calculate the max grid positions that fit within the canvas
+      // Only draw lines at exact grid intervals, not past the paper edge
+      const numVerticalLines = Math.floor(width / gridSize);
+      const numHorizontalLines = Math.floor(height / gridSize);
+      
+      // Vertical lines - from 0 to max that fits
+      for (let i = 0; i <= numVerticalLines; i++) {
+        const x = i * gridSize;
+        const isMajor = i % 5 === 0;
         const line = new fabric.Line([x, 0, x, height], {
           stroke: isMajor ? majorGridColor : gridColor,
           strokeWidth: isMajor ? 1 : 0.5,
@@ -487,13 +493,14 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           excludeFromExport: true,
           strokeUniform: true,
         });
-        setObjectData(line, { id: `grid-v-${x}`, type: 'grid', isGrid: true });
+        setObjectData(line, { id: `grid-v-${i}`, type: 'grid', isGrid: true });
         gridLines.push(line);
       }
       
-      // Horizontal lines - from 0 to height (inclusive)
-      for (let y = 0; y <= height; y += gridSize) {
-        const isMajor = Math.round(y / gridSize) % 5 === 0;
+      // Horizontal lines - from 0 to max that fits
+      for (let i = 0; i <= numHorizontalLines; i++) {
+        const y = i * gridSize;
+        const isMajor = i % 5 === 0;
         const line = new fabric.Line([0, y, width, y], {
           stroke: isMajor ? majorGridColor : gridColor,
           strokeWidth: isMajor ? 1 : 0.5,
@@ -502,7 +509,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           excludeFromExport: true,
           strokeUniform: true,
         });
-        setObjectData(line, { id: `grid-h-${y}`, type: 'grid', isGrid: true });
+        setObjectData(line, { id: `grid-h-${i}`, type: 'grid', isGrid: true });
         gridLines.push(line);
       }
       
@@ -560,27 +567,37 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         return data?.id === component.id && !data.isLabel;
       });
 
-      const colors = COMPONENT_COLORS[component.type];
+      // Use custom color if set, otherwise use default for component type
+      const colors = component.color || COMPONENT_COLORS[component.type];
 
       if (existingObj) {
         const isRect = existingObj instanceof fabric.Rect;
+        const w = component.dimensions.width * CANVAS_SCALE;
+        const h = component.dimensions.length * CANVAS_SCALE;
+        
+        // Update colors
+        existingObj.set({
+          fill: colors.fill,
+          stroke: colors.stroke,
+        });
         
         // For rectangles, we can update width/height directly
+        // Objects use center origin, so position is center of object
         if (isRect) {
           existingObj.set({
-            left: component.position.x * CANVAS_SCALE,
-            top: component.position.y * CANVAS_SCALE,
-            width: component.dimensions.width * CANVAS_SCALE,
-            height: component.dimensions.length * CANVAS_SCALE,
+            left: component.position.x * CANVAS_SCALE + w / 2,
+            top: component.position.y * CANVAS_SCALE + h / 2,
+            width: w,
+            height: h,
             angle: component.rotation,
             scaleX: 1,
             scaleY: 1,
           });
         } else {
-          // For paths, just update position and rotation
+          // For paths (centered at origin), position is center of object
           existingObj.set({
-            left: component.position.x * CANVAS_SCALE,
-            top: component.position.y * CANVAS_SCALE,
+            left: component.position.x * CANVAS_SCALE + w / 2,
+            top: component.position.y * CANVAS_SCALE + h / 2,
             angle: component.rotation,
           });
         }
@@ -934,20 +951,55 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       });
 
       if (existingObj) {
-        // For now, remove and recreate (simpler than updating)
-        canvas.remove(existingObj);
-      }
-      
-      const annotationObj = createAnnotationObject(annotation);
-      if (annotationObj) {
-        setObjectData(annotationObj, {
-          id: annotation.id,
-          type: annotation.type,
-          isAnnotation: true,
-          annotationType: annotation.type,
-        });
-        
-        canvas.add(annotationObj);
+        // Update existing annotation position without recreating
+        // This preserves event handlers and interactivity
+        if (annotation.type === 'text') {
+          existingObj.set({
+            left: annotation.position.x * CANVAS_SCALE,
+            top: annotation.position.y * CANVAS_SCALE,
+            angle: annotation.rotation,
+          });
+          if (existingObj instanceof fabric.IText && existingObj.text !== annotation.text) {
+            existingObj.set({ text: annotation.text });
+          }
+          existingObj.setCoords();
+        } else if (annotation.type === 'dimension') {
+          // For dimension lines, update position (more complex - group center)
+          const x1 = annotation.startPosition.x * CANVAS_SCALE;
+          const y1 = annotation.startPosition.y * CANVAS_SCALE;
+          const x2 = annotation.endPosition.x * CANVAS_SCALE;
+          const y2 = annotation.endPosition.y * CANVAS_SCALE;
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2;
+          const lineAngle = Math.atan2(y2 - y1, x2 - x1);
+          const lineAngleDeg = (lineAngle * 180) / Math.PI;
+          
+          existingObj.set({
+            left: midX,
+            top: midY,
+            angle: lineAngleDeg,
+          });
+          existingObj.setCoords();
+        } else if (annotation.type === 'callout') {
+          existingObj.set({
+            left: annotation.anchorPosition.x * CANVAS_SCALE,
+            top: annotation.anchorPosition.y * CANVAS_SCALE,
+          });
+          existingObj.setCoords();
+        }
+      } else {
+        // Create new annotation
+        const annotationObj = createAnnotationObject(annotation);
+        if (annotationObj) {
+          setObjectData(annotationObj, {
+            id: annotation.id,
+            type: annotation.type,
+            isAnnotation: true,
+            annotationType: annotation.type,
+          });
+          
+          canvas.add(annotationObj);
+        }
       }
     });
 
