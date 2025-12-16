@@ -153,7 +153,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     selectComponents,
     selectAnnotation,
     captureHistory,
-    selectedComponentIds 
+    selectedComponentIds,
+    selectedAnnotationId
   } = useStore();
 
   // Keep refs in sync with store functions
@@ -1184,6 +1185,19 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           canvas.setActiveObject(activeSelection);
           canvas.renderAll();
         }
+      } else if (selectedAnnotationId) {
+        // Handle annotation selection
+        const annotationObj = canvas.getObjects().find((o) => {
+          const data = getObjectData(o);
+          return data?.id === selectedAnnotationId && data.isAnnotation;
+        });
+
+        if (annotationObj) {
+          if (canvas.getActiveObject() !== annotationObj) {
+            canvas.setActiveObject(annotationObj);
+            canvas.renderAll();
+          }
+        }
       } else {
         canvas.discardActiveObject();
         canvas.renderAll();
@@ -1194,7 +1208,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         isUpdatingSelectionRef.current = false;
       }, 0);
     }
-  }, [selectedComponentIds]);
+  }, [selectedComponentIds, selectedAnnotationId]);
 
   return fabricRef;
 }
