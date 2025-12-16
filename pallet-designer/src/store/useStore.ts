@@ -72,6 +72,7 @@ const initialState: Omit<AppState, keyof AppActions> = {
     panX: 0,
     panY: 0,
     activeView: 'top',
+    editorMode: 'views',
     gridEnabled: true,
     snapToGrid: true,
     gridSize: DEFAULT_GRID_SIZE,
@@ -320,6 +321,14 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   setActiveView: (view) => {
     set((state) => ({
       canvas: { ...state.canvas, activeView: view },
+      selectedComponentIds: [],
+      selectedAnnotationId: null,
+    }));
+  },
+
+  setEditorMode: (mode) => {
+    set((state) => ({
+      canvas: { ...state.canvas, editorMode: mode },
       selectedComponentIds: [],
       selectedAnnotationId: null,
     }));

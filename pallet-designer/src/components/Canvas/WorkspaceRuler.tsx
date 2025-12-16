@@ -98,7 +98,7 @@ export function WorkspaceRuler({
     
     ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
+    ctx.textBaseline = 'middle';
     
     for (let mm = startMm; mm <= endMm; mm += 1) {
       const pos = canvasOffset + (mm * scale);
@@ -129,14 +129,14 @@ export function WorkspaceRuler({
       if (isMajor) {
         ctx.fillStyle = colors.text;
         if (orientation === 'horizontal') {
+          ctx.textBaseline = 'top';
           ctx.fillText(String(mm), pos, 2);
         } else {
-          ctx.save();
-          ctx.translate(11, pos);
-          ctx.rotate(-Math.PI / 2);
+          // For vertical ruler, draw text horizontally (no rotation)
+          // Position it in the center of the ruler
+          ctx.textBaseline = 'middle';
           ctx.textAlign = 'center';
-          ctx.fillText(String(mm), 0, 0);
-          ctx.restore();
+          ctx.fillText(String(mm), RULER_SIZE / 2, pos);
         }
       }
     }
@@ -178,17 +178,17 @@ export function WorkspaceRuler({
           ctx.fillRect(cursorPos - textWidth/2 - 3, 1, textWidth + 6, 12);
           ctx.fillStyle = '#ffffff';
           ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
           ctx.fillText(`${posValue}`, cursorPos, 2);
         } else {
-          ctx.save();
-          ctx.translate(12, cursorPos);
-          ctx.rotate(-Math.PI / 2);
+          // For vertical ruler, draw horizontally positioned indicator
+          const textHeight = 12;
           ctx.fillStyle = colors.cursorLine;
-          ctx.fillRect(-textWidth/2 - 3, -11, textWidth + 6, 12);
+          ctx.fillRect(2, cursorPos - textHeight/2 - 1, RULER_SIZE - 4, textHeight + 2);
           ctx.fillStyle = '#ffffff';
           ctx.textAlign = 'center';
-          ctx.fillText(`${posValue}`, 0, -1);
-          ctx.restore();
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${posValue}`, RULER_SIZE / 2, cursorPos);
         }
       }
     }

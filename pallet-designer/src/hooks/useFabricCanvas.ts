@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import * as fabric from 'fabric';
 import { useStore } from '../store/useStore';
-import { COMPONENT_COLORS, CANVAS_SCALE } from '../constants';
+import { COMPONENT_COLORS, CANVAS_SCALE, A4_WIDTH_PX, A4_HEIGHT_PX } from '../constants';
 import type { PalletComponent, TextAnnotation, DimensionAnnotation, CalloutAnnotation } from '../types';
 
 // Module-level canvas reference for export functionality
@@ -170,8 +170,14 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
   // Initialize canvas
   useEffect(() => {
+    console.log('[useFabricCanvas] Init effect running', { 
+      hasCanvasRef: !!canvasRef.current, 
+      hasFabricRef: !!fabricRef.current 
+    });
+    
     if (!canvasRef.current || fabricRef.current) return;
 
+    console.log('[useFabricCanvas] Creating fabric canvas');
     const canvas = new fabric.Canvas(canvasRef.current, {
       width,
       height,
@@ -182,6 +188,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       selectionColor: 'rgba(30, 122, 201, 0.1)',  // Very light blue background
       selectionBorderColor: 'rgba(30, 122, 201, 0.6)',  // Semi-transparent border
       selectionLineWidth: 1,
+    });
+
+    console.log('[useFabricCanvas] Canvas created:', { 
+      canvasWidth: canvas.width, 
+      canvasHeight: canvas.height,
+      backgroundColor: canvas.backgroundColor
     });
 
     // Configure default object styles
@@ -477,6 +489,11 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
   // Draw grid when enabled
   useEffect(() => {
+    console.log('[useFabricCanvas] Grid effect running', { 
+      hasFabricRef: !!fabricRef.current,
+      gridEnabled: canvasState.gridEnabled
+    });
+    
     if (!fabricRef.current) return;
     
     const canvas = fabricRef.current;
@@ -493,38 +510,30 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     // Draw grid if enabled
     if (canvasState.gridEnabled) {
       const gridSizeMm = canvasState.gridSize; // Grid size in mm
-      const gridSizePx = gridSizeMm * CANVAS_SCALE; // Grid size in pixels
       
-      // Colors
-      const minorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.06)';
-      const majorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.12)';
-      const borderColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.35)' : 'rgba(0, 0, 0, 0.25)';
+      // Colors - slightly more visible
+      const minorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)';
+      const majorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.15)';
+      const borderColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)';
       
       const gridLines: fabric.FabricObject[] = [];
       
-      // Paper dimensions
-      const paperWidthMm = 210; // A4 width in mm
-      const paperHeightMm = 297; // A4 height in mm
+      // Paper dimensions in pixels (always use exact A4 dimensions)
+      const paperWidthPx = A4_WIDTH_PX;
+      const paperHeightPx = A4_HEIGHT_PX;
+      const paperWidthMm = 210;
+      const paperHeightMm = 297;
       
-      // Calculate number of lines (always starting from 0)
-      // We draw lines at 0, gridSize, 2*gridSize, etc.
-      // The last line should be at or before the paper edge
-      const maxVerticalIndex = Math.floor(paperWidthMm / gridSizeMm);
-      const maxHorizontalIndex = Math.floor(paperHeightMm / gridSizeMm);
-      
-      // Draw vertical lines
-      for (let i = 0; i <= maxVerticalIndex; i++) {
-        const xMm = i * gridSizeMm;
+      // Draw vertical lines (including edges at 0 and 210mm)
+      for (let xMm = 0; xMm <= paperWidthMm; xMm += gridSizeMm) {
         const xPx = xMm * CANVAS_SCALE;
         
-        // Determine if this is a major line (every 5 grid cells = every 50mm for 10mm grid, etc)
+        // Determine line style
         const isMajor = (xMm % 50 === 0);
-        const isEdge = (i === 0 || i === maxVerticalIndex);
+        const isEdge = (xMm === 0 || xMm === paperWidthMm);
         
-        // Vertical line from top to the last horizontal line position
-        const endY = maxHorizontalIndex * gridSizePx;
-        
-        const line = new fabric.Line([xPx, 0, xPx, endY], {
+        // Vertical line spans full paper height
+        const line = new fabric.Line([xPx, 0, xPx, paperHeightPx], {
           stroke: isEdge ? borderColor : (isMajor ? majorColor : minorColor),
           strokeWidth: isEdge ? 1.5 : (isMajor ? 1 : 0.5),
           selectable: false,
@@ -532,23 +541,35 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           excludeFromExport: true,
           strokeUniform: true,
         });
-        setObjectData(line, { id: `grid-v-${i}`, type: 'grid', isGrid: true });
+        setObjectData(line, { id: `grid-v-${xMm}`, type: 'grid', isGrid: true });
         gridLines.push(line);
       }
       
-      // Draw horizontal lines
-      for (let i = 0; i <= maxHorizontalIndex; i++) {
-        const yMm = i * gridSizeMm;
+      // Always add the right edge line at exactly 210mm if not already added
+      const rightEdgeX = paperWidthMm;
+      if (rightEdgeX % gridSizeMm !== 0) {
+        const line = new fabric.Line([paperWidthPx, 0, paperWidthPx, paperHeightPx], {
+          stroke: borderColor,
+          strokeWidth: 1.5,
+          selectable: false,
+          evented: false,
+          excludeFromExport: true,
+          strokeUniform: true,
+        });
+        setObjectData(line, { id: `grid-v-edge`, type: 'grid', isGrid: true });
+        gridLines.push(line);
+      }
+      
+      // Draw horizontal lines (including edges at 0 and 297mm)
+      for (let yMm = 0; yMm <= paperHeightMm; yMm += gridSizeMm) {
         const yPx = yMm * CANVAS_SCALE;
         
-        // Determine if this is a major line
+        // Determine line style
         const isMajor = (yMm % 50 === 0);
-        const isEdge = (i === 0 || i === maxHorizontalIndex);
+        const isEdge = (yMm === 0 || yMm === paperHeightMm);
         
-        // Horizontal line from left to the last vertical line position
-        const endX = maxVerticalIndex * gridSizePx;
-        
-        const line = new fabric.Line([0, yPx, endX, yPx], {
+        // Horizontal line spans full paper width
+        const line = new fabric.Line([0, yPx, paperWidthPx, yPx], {
           stroke: isEdge ? borderColor : (isMajor ? majorColor : minorColor),
           strokeWidth: isEdge ? 1.5 : (isMajor ? 1 : 0.5),
           selectable: false,
@@ -556,7 +577,22 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           excludeFromExport: true,
           strokeUniform: true,
         });
-        setObjectData(line, { id: `grid-h-${i}`, type: 'grid', isGrid: true });
+        setObjectData(line, { id: `grid-h-${yMm}`, type: 'grid', isGrid: true });
+        gridLines.push(line);
+      }
+      
+      // Always add the bottom edge line at exactly 297mm if not already added
+      const bottomEdgeY = paperHeightMm;
+      if (bottomEdgeY % gridSizeMm !== 0) {
+        const line = new fabric.Line([0, paperHeightPx, paperWidthPx, paperHeightPx], {
+          stroke: borderColor,
+          strokeWidth: 1.5,
+          selectable: false,
+          evented: false,
+          excludeFromExport: true,
+          strokeUniform: true,
+        });
+        setObjectData(line, { id: `grid-h-edge`, type: 'grid', isGrid: true });
         gridLines.push(line);
       }
       
@@ -565,8 +601,11 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         canvas.add(line);
         canvas.sendObjectToBack(line);
       });
+      
+      console.log('[useFabricCanvas] Grid lines added:', gridLines.length);
     }
     
+    console.log('[useFabricCanvas] Grid effect complete, objects on canvas:', canvas.getObjects().length);
     canvas.renderAll();
   }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, width, height]);
 
@@ -661,18 +700,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
 
-    // Reorder canvas objects to match component array order (z-index)
-    // Components at the end of the array should be on top (higher z-index)
-    // We need to bring each component to front in order, so the last one ends up on top
-    viewComponents.forEach((component) => {
-      const obj = canvas.getObjects().find((o) => {
-        const data = getObjectData(o);
-        return data?.id === component.id && !data.isLabel && !data.isAnnotation;
-      });
-      if (obj) {
-        canvas.bringObjectToFront(obj);
-      }
-    });
+    // Note: z-ordering is handled in the combined sync effect to ensure
+    // annotations are always on top of components
 
     canvas.renderAll();
   }, []);
@@ -1047,8 +1076,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           });
           
           canvas.add(annotationObj);
-          // Ensure annotations are on top of components
-          canvas.bringObjectToFront(annotationObj);
         }
       }
     });
@@ -1061,29 +1088,55 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
 
-    // Always bring ALL annotations to front (after components)
-    // This ensures annotations are always on top regardless of sync order
-    canvas.getObjects().forEach((obj) => {
+    // Note: z-ordering is handled in the combined sync effect
+
+    canvas.renderAll();
+  }, [createAnnotationObject]);
+
+  // Watch for component AND annotation changes together
+  // This ensures proper z-ordering: grid -> components -> annotations
+  useEffect(() => {
+    console.log('[useFabricCanvas] Sync effect running', { 
+      hasFabricRef: !!fabricRef.current,
+      activeView: canvasState.activeView,
+      componentCount: components[canvasState.activeView]?.length || 0,
+      annotationCount: annotations[canvasState.activeView]?.length || 0,
+      components: components[canvasState.activeView]
+    });
+    
+    if (!fabricRef.current) return;
+    
+    const canvas = fabricRef.current;
+    const viewComponents = components[canvasState.activeView];
+    const viewAnnotations = annotations[canvasState.activeView];
+    
+    // Sync components first
+    syncComponents(viewComponents);
+    
+    // Then sync annotations
+    syncAnnotations(viewAnnotations);
+    
+    // Ensure proper z-ordering: grid at back, then components, then annotations on top
+    const objects = canvas.getObjects();
+    
+    // Send all grid objects to back
+    objects.forEach((obj) => {
+      const data = getObjectData(obj);
+      if (data?.isGrid) {
+        canvas.sendObjectToBack(obj);
+      }
+    });
+    
+    // Bring all annotations to front
+    objects.forEach((obj) => {
       const data = getObjectData(obj);
       if (data?.isAnnotation) {
         canvas.bringObjectToFront(obj);
       }
     });
-
+    
     canvas.renderAll();
-  }, [createAnnotationObject]);
-
-  // Watch for component changes
-  useEffect(() => {
-    const viewComponents = components[canvasState.activeView];
-    syncComponents(viewComponents);
-  }, [components, canvasState.activeView, syncComponents]);
-
-  // Watch for annotation changes
-  useEffect(() => {
-    const viewAnnotations = annotations[canvasState.activeView];
-    syncAnnotations(viewAnnotations);
-  }, [annotations, canvasState.activeView, syncAnnotations]);
+  }, [components, annotations, canvasState.activeView, syncComponents, syncAnnotations]);
 
   // Handle selection from state - support multi-selection
   useEffect(() => {

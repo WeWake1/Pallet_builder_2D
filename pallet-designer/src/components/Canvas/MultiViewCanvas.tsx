@@ -6,6 +6,7 @@ import type { ViewType, ComponentType } from '../../types';
 import * as fabric from 'fabric';
 import { ContextMenu } from './ContextMenu';
 import { WorkspaceRuler } from './WorkspaceRuler';
+import { FinalCanvas } from './FinalCanvas';
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
 const RULER_SIZE = 24; // Must match WorkspaceRuler
@@ -105,8 +106,8 @@ export function MultiViewCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
-  const { canvas, setActiveView, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent } = useStore();
-  const { activeView, zoom } = canvas;
+  const { canvas, setActiveView, setEditorMode, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent } = useStore();
+  const { activeView, editorMode, zoom } = canvas;
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 });
   const [isDragOver, setIsDragOver] = useState(false);
@@ -364,20 +365,54 @@ export function MultiViewCanvas() {
     <div ref={containerRef} className="h-full flex flex-col bg-[var(--color-background)] overflow-hidden">
       {/* Toolbar */}
       <div className="shrink-0 bg-[var(--color-surface)] border-b border-[var(--color-border)] px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[var(--color-text)]">
-            {VIEW_LABELS[activeView].label}
-          </span>
-          <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface-hover)] px-2 py-0.5 rounded">
-            {VIEW_LABELS[activeView].arrow}
-          </span>
-          <span className="text-xs text-[var(--color-text-muted)]">
-            • {viewComponents.length} component{viewComponents.length !== 1 ? 's' : ''}
-          </span>
+        {/* Left side: View info (only shown in Views mode) */}
+        <div className="flex items-center gap-2 min-w-[200px]">
+          {editorMode === 'views' && (
+            <>
+              <span className="text-sm font-medium text-[var(--color-text)]">
+                {VIEW_LABELS[activeView].label}
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-surface-hover)] px-2 py-0.5 rounded">
+                {VIEW_LABELS[activeView].arrow}
+              </span>
+              <span className="text-xs text-[var(--color-text-muted)]">
+                • {viewComponents.length} component{viewComponents.length !== 1 ? 's' : ''}
+              </span>
+            </>
+          )}
+          {editorMode === 'final' && (
+            <span className="text-sm font-medium text-[var(--color-text)]">
+              Final Template
+            </span>
+          )}
+        </div>
+
+        {/* Center: Mode Tabs */}
+        <div className="flex items-center gap-1 bg-[var(--color-background)] rounded-lg p-1">
+          <button
+            onClick={() => setEditorMode('views')}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+              editorMode === 'views'
+                ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+            }`}
+          >
+            Views
+          </button>
+          <button
+            onClick={() => setEditorMode('final')}
+            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+              editorMode === 'final'
+                ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]'
+            }`}
+          >
+            Final
+          </button>
         </div>
         
-        {/* Zoom Controls */}
-        <div className="flex items-center gap-2">
+        {/* Right side: Zoom Controls */}
+        <div className="flex items-center gap-2 min-w-[200px] justify-end">
           <button
             onClick={() => setZoom(zoom - ZOOM_LIMITS.step)}
             disabled={zoom <= ZOOM_LIMITS.min}
@@ -410,39 +445,49 @@ export function MultiViewCanvas() {
 
       {/* Main Content - Canvas + View Previews */}
       <div className="flex-1 flex overflow-hidden">
-        {/* View Previews Panel */}
-        <div className="shrink-0 w-20 bg-[var(--color-surface)] border-r border-[var(--color-border)] p-2 flex flex-col gap-2 overflow-y-auto">
-          <div className="text-xs text-center text-[var(--color-text-muted)] font-medium mb-1">Views</div>
-          {VIEWS.map((view) => (
-            <ViewPreview
-              key={view}
-              view={view}
-              isActive={activeView === view}
-              onClick={() => setActiveView(view)}
-            />
-          ))}
-        </div>
+        {/* View Previews Panel - Only shown in Views mode */}
+        {editorMode === 'views' && (
+          <div className="shrink-0 w-20 bg-[var(--color-surface)] border-r border-[var(--color-border)] p-2 flex flex-col gap-2 overflow-y-auto">
+            <div className="text-xs text-center text-[var(--color-text-muted)] font-medium mb-1">Views</div>
+            {VIEWS.map((view) => (
+              <ViewPreview
+                key={view}
+                view={view}
+                isActive={activeView === view}
+                onClick={() => setActiveView(view)}
+              />
+            ))}
+          </div>
+        )}
 
-        {/* Canvas Area with Workspace Rulers */}
-        <div
-          ref={workspaceRef}
-          className="flex-1 flex flex-col overflow-hidden"
-          onWheel={handleWheel}
-        >
-          {/* Top ruler row */}
-          <div className="flex shrink-0">
-            {/* Corner piece */}
-            <div 
-              className="shrink-0 bg-[var(--color-surface)] border-r border-b border-[var(--color-border)] flex items-center justify-center"
-              style={{ width: RULER_SIZE, height: RULER_SIZE }}
-            >
-              <span className="text-[8px] text-[var(--color-text-muted)]">mm</span>
-            </div>
-            {/* Horizontal ruler spanning full workspace width */}
-            <div className="flex-1 overflow-hidden">
-              <WorkspaceRuler 
-                orientation="horizontal" 
-                containerSize={workspaceSize.width > 0 ? workspaceSize.width - RULER_SIZE : containerSize.width - 100}
+        {/* Final Canvas - Only shown in Final mode */}
+        {editorMode === 'final' ? (
+          <FinalCanvas 
+            containerSize={containerSize}
+            zoom={zoom}
+          />
+        ) : (
+          /* Views Mode: Canvas Area with Workspace Rulers */
+          <div
+            key="views-canvas"
+            ref={workspaceRef}
+            className="flex-1 flex flex-col overflow-hidden"
+            onWheel={handleWheel}
+          >
+            {/* Top ruler row */}
+            <div className="flex shrink-0">
+              {/* Corner piece */}
+              <div 
+                className="shrink-0 bg-[var(--color-surface)] border-r border-b border-[var(--color-border)] flex items-center justify-center"
+                style={{ width: RULER_SIZE, height: RULER_SIZE }}
+              >
+                <span className="text-[8px] text-[var(--color-text-muted)]">mm</span>
+              </div>
+              {/* Horizontal ruler spanning full workspace width */}
+              <div className="flex-1 overflow-hidden">
+                <WorkspaceRuler 
+                  orientation="horizontal" 
+                  containerSize={workspaceSize.width > 0 ? workspaceSize.width - RULER_SIZE : containerSize.width - 100}
                 canvasOffset={(workspaceSize.width > 0 ? workspaceSize.width - RULER_SIZE : containerSize.width - 100) / 2 - (displayWidth * zoom) / 2}
                 canvasSize={displayWidth * zoom}
                 zoom={scale}
@@ -497,7 +542,11 @@ export function MultiViewCanvas() {
                   }}
                 >
                   <div style={{ transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-                    <canvas ref={canvasRef} />
+                    <canvas 
+                      ref={canvasRef} 
+                      width={canvasWidth}
+                      height={canvasHeight}
+                    />
                   </div>
 
                   {isDragOver && (
@@ -528,6 +577,7 @@ export function MultiViewCanvas() {
             </div>
           </div>
         </div>
+        )}
       </div>
       
       {/* Context Menu */}

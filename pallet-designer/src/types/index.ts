@@ -142,12 +142,16 @@ export interface BrandingConfig {
   secondaryColor: string;
 }
 
+// Editor mode - views tab shows individual views, final shows the complete template
+export type EditorMode = 'views' | 'final';
+
 // Canvas state
 export interface CanvasState {
   zoom: number;
   panX: number;
   panY: number;
   activeView: ViewType;
+  editorMode: EditorMode;
   gridEnabled: boolean;
   snapToGrid: boolean;
   gridSize: number; // in mm
@@ -212,6 +216,7 @@ export interface AppActions {
   
   // View actions
   setActiveView: (view: ViewType) => void;
+  setEditorMode: (mode: EditorMode) => void;
   
   // Canvas actions
   setZoom: (zoom: number) => void;
