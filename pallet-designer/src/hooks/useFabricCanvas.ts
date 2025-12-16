@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { useStore } from '../store/useStore';
 import { COMPONENT_COLORS, CANVAS_SCALE, A4_WIDTH_PX, A4_HEIGHT_PX } from '../constants';
@@ -141,6 +141,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   const captureHistoryRef = useRef<() => void>(() => {});
   const isUpdatingSelectionRef = useRef(false); // Prevent circular selection updates
   const isDraggingRef = useRef(false); // Track if we're currently dragging (for history capture)
+  // Track canvas version to force re-sync when canvas is recreated (e.g., after tab switch)
+  const [canvasVersion, setCanvasVersion] = useState(0);
   const { 
     components,
     annotations,
@@ -175,7 +177,18 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       hasFabricRef: !!fabricRef.current 
     });
     
-    if (!canvasRef.current || fabricRef.current) return;
+    if (!canvasRef.current) return;
+
+    // If we already have a fabric instance for this exact element, don't recreate
+    if (fabricRef.current && fabricRef.current.getElement() === canvasRef.current) {
+      return;
+    }
+
+    // If we have a fabric instance but for a different element, dispose it
+    if (fabricRef.current) {
+      fabricRef.current.dispose();
+      fabricRef.current = null;
+    }
 
     console.log('[useFabricCanvas] Creating fabric canvas');
     const canvas = new fabric.Canvas(canvasRef.current, {
@@ -208,6 +221,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
     fabricRef.current = canvas;
     globalFabricCanvas = canvas; // Set global reference for export
+    
+    // Increment canvas version to trigger re-sync of components and annotations
+    setCanvasVersion(v => v + 1);
 
     // Handle selection - support multi-selection
     canvas.on('selection:created', (e) => {
@@ -478,7 +494,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       globalFabricCanvas = null; // Clear global reference
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canvasRef.current]);
 
   // Update canvas size
   useEffect(() => {
@@ -607,7 +623,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     
     console.log('[useFabricCanvas] Grid effect complete, objects on canvas:', canvas.getObjects().length);
     canvas.renderAll();
-  }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, width, height]);
+  }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, width, height, canvasVersion]);
 
   // Update canvas background for dark mode
   useEffect(() => {
@@ -1095,13 +1111,15 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
   // Watch for component AND annotation changes together
   // This ensures proper z-ordering: grid -> components -> annotations
+  // Also re-syncs when canvasVersion changes (after canvas recreation, e.g., tab switch)
   useEffect(() => {
     console.log('[useFabricCanvas] Sync effect running', { 
       hasFabricRef: !!fabricRef.current,
       activeView: canvasState.activeView,
       componentCount: components[canvasState.activeView]?.length || 0,
       annotationCount: annotations[canvasState.activeView]?.length || 0,
-      components: components[canvasState.activeView]
+      components: components[canvasState.activeView],
+      canvasVersion
     });
     
     if (!fabricRef.current) return;
@@ -1136,7 +1154,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     });
     
     canvas.renderAll();
-  }, [components, annotations, canvasState.activeView, syncComponents, syncAnnotations]);
+  }, [components, annotations, canvasState.activeView, syncComponents, syncAnnotations, canvasVersion]);
 
   // Handle selection from state - support multi-selection
   useEffect(() => {

@@ -7,6 +7,7 @@ import type { ViewType } from '../../types';
 interface FinalCanvasProps {
   containerSize: { width: number; height: number };
   zoom: number;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
@@ -18,7 +19,7 @@ const MARGIN = 12 * CANVAS_SCALE; // 12mm margin
 const SPEC_BOX_WIDTH = 65 * CANVAS_SCALE; // 65mm spec box
 const VIEW_GAP = 4 * CANVAS_SCALE; // 4mm gap between views
 
-export function FinalCanvas({ containerSize, zoom }: FinalCanvasProps) {
+export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -30,6 +31,8 @@ export function FinalCanvas({ containerSize, zoom }: FinalCanvasProps) {
     branding, 
     currentPreset,
     canvas: canvasState,
+    selectComponents,
+    selectComponent,
   } = useStore();
 
   const isDarkMode = canvasState.darkMode;
@@ -87,11 +90,39 @@ export function FinalCanvas({ containerSize, zoom }: FinalCanvasProps) {
 
     fabricRef.current = canvas;
 
+    // Handle selection
+    canvas.on('selection:created', (e) => {
+      const selected = e.selected || [];
+      // Extract component IDs from the data property we set on objects
+      const ids = selected
+        .map(obj => (obj as unknown as { data?: { componentId?: string } }).data?.componentId)
+        .filter((id): id is string => !!id);
+      
+      if (ids.length > 0) {
+        selectComponents(ids);
+      }
+    });
+    
+    canvas.on('selection:updated', (e) => {
+      const selected = e.selected || [];
+      const ids = selected
+        .map(obj => (obj as unknown as { data?: { componentId?: string } }).data?.componentId)
+        .filter((id): id is string => !!id);
+      
+      if (ids.length > 0) {
+        selectComponents(ids);
+      }
+    });
+
+    canvas.on('selection:cleared', () => {
+      selectComponent(null);
+    });
+
     return () => {
       canvas.dispose();
       fabricRef.current = null;
     };
-  }, []);
+  }, [selectComponents, selectComponent]);
 
   // Update canvas background for dark mode
   useEffect(() => {
@@ -500,6 +531,7 @@ export function FinalCanvas({ containerSize, zoom }: FinalCanvasProps) {
           <div
             ref={wrapperRef}
             className="bg-white shadow-xl relative overflow-hidden"
+            onContextMenu={onContextMenu}
             style={{
               width: displayWidth * zoom,
               height: displayHeight * zoom,

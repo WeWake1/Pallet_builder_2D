@@ -465,6 +465,7 @@ export function MultiViewCanvas() {
           <FinalCanvas 
             containerSize={containerSize}
             zoom={zoom}
+            onContextMenu={handleContextMenu}
           />
         ) : (
           /* Views Mode: Canvas Area with Workspace Rulers */
