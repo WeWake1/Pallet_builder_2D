@@ -735,6 +735,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         fontFamily: 'Arial',
         fontWeight: annotation.fontWeight,
         angle: annotation.rotation,
+        originX: 'center',
+        originY: 'center',
+        textAlign: 'center',
         editable: true,
         selectable: true,
         evented: true,
@@ -749,15 +752,34 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         updateAnnotationRef.current(annotationId, { text: newText });
       });
       
-      // Handle movement
+      // Handle modification (move, rotate, scale)
       textObj.on('modified', () => {
-        updateAnnotationRef.current(annotationId, {
+        const updates: Partial<TextAnnotation> = {
           position: {
             x: Math.round((textObj.left || 0) / CANVAS_SCALE),
             y: Math.round((textObj.top || 0) / CANVAS_SCALE),
           },
           rotation: Math.round(textObj.angle || 0),
-        });
+        };
+
+        // Handle scaling - update font size instead of scale
+        if (textObj.scaleX !== 1 || textObj.scaleY !== 1) {
+          const scale = Math.max(textObj.scaleX || 1, textObj.scaleY || 1);
+          const currentFontSize = textObj.fontSize || 12;
+          const newFontSize = currentFontSize * scale;
+          
+          textObj.set({
+            fontSize: newFontSize,
+            scaleX: 1,
+            scaleY: 1
+          });
+          
+          // Update store with new font size (convert back from pixels)
+          const storeFontSize = Math.round(newFontSize * 2 / CANVAS_SCALE);
+          updates.fontSize = storeFontSize;
+        }
+
+        updateAnnotationRef.current(annotationId, updates);
       });
       
       return textObj;
@@ -1052,6 +1074,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             left: annotation.position.x * CANVAS_SCALE,
             top: annotation.position.y * CANVAS_SCALE,
             angle: annotation.rotation,
+            fontSize: annotation.fontSize * CANVAS_SCALE / 2,
+            fontWeight: annotation.fontWeight,
+            fill: annotation.color,
           });
           if (existingObj instanceof fabric.IText && existingObj.text !== annotation.text) {
             existingObj.set({ text: annotation.text });

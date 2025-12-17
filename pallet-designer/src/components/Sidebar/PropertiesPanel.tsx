@@ -1,5 +1,6 @@
-import { useStore, useSelectedComponent } from '../../store/useStore';
+import { useStore, useSelectedComponent, useSelectedAnnotation } from '../../store/useStore';
 import { COMPONENT_COLORS, A4_WIDTH_MM, A4_HEIGHT_MM } from '../../constants';
+import type { Annotation } from '../../types';
 
 // Preset color options
 const COLOR_PRESETS = [
@@ -135,9 +136,217 @@ function CanvasSettingsPanel() {
   );
 }
 
+function AnnotationPropertiesPanel({ annotation }: { annotation: Annotation }) {
+  const { updateAnnotation, deleteAnnotation } = useStore();
+
+  const handlePositionChange = (key: 'x' | 'y', value: string) => {
+    const numValue = parseInt(value, 10);
+    if (!isNaN(numValue)) {
+      if (annotation.type === 'text') {
+        updateAnnotation(annotation.id, {
+          position: { ...annotation.position, [key]: numValue }
+        });
+      } else if (annotation.type === 'callout') {
+        updateAnnotation(annotation.id, {
+          anchorPosition: { ...annotation.anchorPosition, [key]: numValue }
+        });
+      }
+    }
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center border-2 bg-blue-50 border-blue-200 text-blue-600">
+          {annotation.type === 'text' && (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16m-7 6h7" />
+            </svg>
+          )}
+          {annotation.type === 'dimension' && (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+            </svg>
+          )}
+          {annotation.type === 'callout' && (
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
+            </svg>
+          )}
+        </div>
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--color-text)] capitalize">
+            {annotation.type} Annotation
+          </h3>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            ID: {annotation.id.slice(-8)}
+          </p>
+        </div>
+      </div>
+
+      {/* Text Content (for text and callout) */}
+      {(annotation.type === 'text' || annotation.type === 'callout') && (
+        <div>
+          <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+            Content
+          </h4>
+          <textarea
+            value={annotation.text}
+            onChange={(e) => updateAnnotation(annotation.id, { text: e.target.value })}
+            className="w-full h-20 p-2 rounded border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] resize-none"
+          />
+        </div>
+      )}
+
+      {/* Dimension Value (for dimension) */}
+      {annotation.type === 'dimension' && (
+        <div>
+          <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+            Value (mm)
+          </h4>
+          <input
+            type="number"
+            value={annotation.value}
+            onChange={(e) => updateAnnotation(annotation.id, { value: parseInt(e.target.value) || 0 })}
+            className="w-full h-8 px-2 rounded border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+          />
+        </div>
+      )}
+
+      {/* Font Settings (for text) */}
+      {annotation.type === 'text' && (
+        <div>
+          <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+            Font Settings
+          </h4>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)]">Size</label>
+              <input
+                type="number"
+                value={annotation.fontSize}
+                onChange={(e) => updateAnnotation(annotation.id, { fontSize: parseInt(e.target.value) || 12 })}
+                className="w-full h-8 px-2 rounded border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)]">Weight</label>
+              <select
+                value={annotation.fontWeight}
+                onChange={(e) => updateAnnotation(annotation.id, { fontWeight: e.target.value as 'normal' | 'bold' })}
+                className="w-full h-8 px-2 rounded border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              >
+                <option value="normal">Normal</option>
+                <option value="bold">Bold</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Position (for text and callout) */}
+      {(annotation.type === 'text' || annotation.type === 'callout') && (
+        <div>
+          <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+            Position (mm)
+          </h4>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)]">X</label>
+              <input
+                type="number"
+                value={annotation.type === 'text' ? annotation.position.x : annotation.anchorPosition.x}
+                onChange={(e) => handlePositionChange('x', e.target.value)}
+                className="w-full h-8 px-2 rounded border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-[var(--color-text-muted)]">Y</label>
+              <input
+                type="number"
+                value={annotation.type === 'text' ? annotation.position.y : annotation.anchorPosition.y}
+                onChange={(e) => handlePositionChange('y', e.target.value)}
+                className="w-full h-8 px-2 rounded border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rotation (for text) */}
+      {annotation.type === 'text' && (
+        <div>
+          <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+            Rotation
+          </h4>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min="0"
+              max="360"
+              value={annotation.rotation}
+              onChange={(e) => updateAnnotation(annotation.id, { rotation: parseInt(e.target.value) || 0 })}
+              className="flex-1 h-2 rounded-lg appearance-none bg-gray-200"
+            />
+            <input
+              type="number"
+              value={annotation.rotation}
+              onChange={(e) => updateAnnotation(annotation.id, { rotation: parseInt(e.target.value) || 0 })}
+              className="w-16 h-8 px-2 rounded border border-[var(--color-border)] text-sm text-center focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            />
+            <span className="text-xs text-[var(--color-text-muted)]">°</span>
+          </div>
+        </div>
+      )}
+
+      {/* Color (for text) */}
+      {annotation.type === 'text' && (
+        <div>
+          <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+            Color
+          </h4>
+          <div className="flex items-center gap-1">
+            <input
+              type="color"
+              value={annotation.color}
+              onChange={(e) => updateAnnotation(annotation.id, { color: e.target.value })}
+              className="w-8 h-8 rounded border border-[var(--color-border)] cursor-pointer"
+            />
+            <input
+              type="text"
+              value={annotation.color}
+              onChange={(e) => updateAnnotation(annotation.id, { color: e.target.value })}
+              className="flex-1 h-8 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="pt-2">
+        <button
+          onClick={() => deleteAnnotation(annotation.id)}
+          className="w-full h-9 rounded-lg border border-red-200 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center gap-1"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+          </svg>
+          Delete Annotation
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function PropertiesPanel() {
   const { updateComponent, deleteComponent, duplicateComponent, bringToFront, bringForward, sendToBack, sendBackward } = useStore();
   const selectedComponent = useSelectedComponent();
+  const selectedAnnotation = useSelectedAnnotation();
+
+  if (selectedAnnotation) {
+    return <AnnotationPropertiesPanel annotation={selectedAnnotation} />;
+  }
 
   if (!selectedComponent) {
     return <CanvasSettingsPanel />;
