@@ -134,13 +134,15 @@ export function WorkspaceRuler({
           ctx.textAlign = 'center';
           ctx.fillText(String(mm), pos, 2);
         } else {
-          // For vertical ruler, draw text horizontally (no rotation)
-          ctx.textBaseline = 'middle';
-          ctx.textAlign = 'right';
-          // Position text well inside the ruler to avoid clipping on the left edge.
-          // Keep it left of the tick marks.
-          const labelX = Math.max(2, RULER_SIZE - tickLength - 4);
-          ctx.fillText(String(mm), labelX, pos);
+          // For vertical ruler, match the horizontal ruler style:
+          // - put labels just below the tick mark
+          // - align left so digits don't get clipped
+          ctx.textBaseline = 'top';
+          ctx.textAlign = 'left';
+          // Keep text away from the tick area (ticks start from the right edge)
+          const labelX = 2;
+          const labelY = pos - 6; // center-ish around the major tick
+          ctx.fillText(String(mm), labelX, labelY);
         }
       }
     }
