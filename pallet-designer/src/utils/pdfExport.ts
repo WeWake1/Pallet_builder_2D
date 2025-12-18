@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import type { PalletComponent, ViewType, PalletSpecification, BrandingConfig, Annotation } from '../types';
-import { VIEW_LABELS, CANVAS_SCALE, COMPONENT_COLORS, A4_WIDTH_PX, A4_HEIGHT_PX, DEFAULT_GRID_SIZE } from '../constants';
+import { VIEW_LABELS, CANVAS_SCALE, COMPONENT_COLORS, A4_WIDTH_PX, A4_HEIGHT_PX } from '../constants';
 import * as fabric from 'fabric';
 
 interface ExportOptions {
@@ -25,31 +25,7 @@ async function renderViewToDataUrl(
     backgroundColor: '#ffffff',
   });
 
-  // Draw grid
-  const gridSizePx = DEFAULT_GRID_SIZE * CANVAS_SCALE;
-  const maxGridLinesX = Math.floor(A4_WIDTH_PX / gridSizePx);
-  const maxGridLinesY = Math.floor(A4_HEIGHT_PX / gridSizePx);
-  
-  for (let i = 0; i <= maxGridLinesX; i++) {
-    const x = i * gridSizePx;
-    const line = new fabric.Line([x, 0, x, maxGridLinesY * gridSizePx], {
-      stroke: '#e5e5e5',
-      strokeWidth: 0.5,
-      selectable: false,
-      evented: false,
-    });
-    canvas.add(line);
-  }
-  for (let i = 0; i <= maxGridLinesY; i++) {
-    const y = i * gridSizePx;
-    const line = new fabric.Line([0, y, maxGridLinesX * gridSizePx, y], {
-      stroke: '#e5e5e5',
-      strokeWidth: 0.5,
-      selectable: false,
-      evented: false,
-    });
-    canvas.add(line);
-  }
+  // Grid removed as per user request for final template
 
   // Draw paper boundary
   canvas.add(new fabric.Rect({

@@ -709,21 +709,71 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
 
-    // Note: z-ordering is handled in the combined sync effect to ensure
-    // annotations are always on top of components
+    // Reorder fabric objects to match the store array order (z-ordering)
+    // The store array order determines layering: first item = back, last item = front
+    // We need to remove and re-add objects in the correct order
+    const componentObjects: fabric.FabricObject[] = [];
+    viewComponents.forEach((component) => {
+      const fabricObj = canvas.getObjects().find((obj) => {
+        const data = getObjectData(obj);
+        return data?.id === component.id && !data.isGrid && !data.isLabel && !data.isAnnotation;
+      });
+      if (fabricObj) {
+        componentObjects.push(fabricObj);
+      }
+    });
+    
+    // Temporarily disable selection events to prevent clearing selection during reordering
+    isUpdatingSelectionRef.current = true;
+
+    // Remove all component objects from canvas
+    componentObjects.forEach((obj) => canvas.remove(obj));
+    
+    // Re-add them in the correct order (store order)
+    componentObjects.forEach((obj) => canvas.add(obj));
+
+    // Restore selection if needed
+    // We need to ensure the active object is still set correctly after re-adding
+    if (selectedComponentIds.length > 0) {
+      const objectsToSelect = canvas.getObjects().filter((o) => {
+        const data = getObjectData(o);
+        return data?.id && selectedComponentIds.includes(data.id) && !data.isLabel && !data.isGrid;
+      });
+      
+      if (objectsToSelect.length > 0) {
+        if (objectsToSelect.length === 1) {
+          // Only set if not already active (to avoid unnecessary events)
+          if (canvas.getActiveObject() !== objectsToSelect[0]) {
+            canvas.setActiveObject(objectsToSelect[0]);
+          }
+        } else {
+          const activeSelection = new fabric.ActiveSelection(objectsToSelect, { canvas });
+          canvas.setActiveObject(activeSelection);
+        }
+      }
+    }
+
+    // Re-enable selection events
+    isUpdatingSelectionRef.current = false;
 
     canvas.renderAll();
   }, []);
 
   // Create annotation object
   const createAnnotationObject = useCallback((annotation: TextAnnotation | DimensionAnnotation | CalloutAnnotation): fabric.FabricObject | fabric.Group | null => {
+    // Helper to check if color is "black-ish" (default text colors)
+    const isBlackish = (c: string) => ['#000000', '#000', 'black', '#333333', '#1f2937'].includes(c?.toLowerCase());
+    
     if (annotation.type === 'text') {
       const annotationId = annotation.id;
+      // Auto-switch black text to white in dark mode
+      const displayColor = (canvasState.darkMode && isBlackish(annotation.color)) ? '#ffffff' : annotation.color;
+      
       const textObj = new fabric.IText(annotation.text, {
         left: annotation.position.x * CANVAS_SCALE,
         top: annotation.position.y * CANVAS_SCALE,
         fontSize: annotation.fontSize * CANVAS_SCALE / 2,
-        fill: annotation.color,
+        fill: displayColor,
         fontFamily: 'Arial',
         fontWeight: annotation.fontWeight,
         angle: annotation.rotation,
@@ -1029,7 +1079,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     }
     
     return null;
-  }, []);
+  }, [canvasState.darkMode]);
 
   // Sync annotations to canvas
   const syncAnnotations = useCallback((viewAnnotations: (TextAnnotation | DimensionAnnotation | CalloutAnnotation)[]) => {
@@ -1062,13 +1112,17 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         });
         
         if (annotation.type === 'text') {
+          // Auto-switch black text to white in dark mode
+          const isBlackish = (c: string) => ['#000000', '#000', 'black', '#333333', '#1f2937'].includes(c?.toLowerCase());
+          const displayColor = (canvasState.darkMode && isBlackish(annotation.color)) ? '#ffffff' : annotation.color;
+
           existingObj.set({
             left: annotation.position.x * CANVAS_SCALE,
             top: annotation.position.y * CANVAS_SCALE,
             angle: annotation.rotation,
             fontSize: annotation.fontSize * CANVAS_SCALE / 2,
             fontWeight: annotation.fontWeight,
-            fill: annotation.color,
+            fill: displayColor,
           });
           if (existingObj instanceof fabric.IText && existingObj.text !== annotation.text) {
             existingObj.set({ text: annotation.text });
@@ -1125,7 +1179,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     // Note: z-ordering is handled in the combined sync effect
 
     canvas.renderAll();
-  }, [createAnnotationObject]);
+  }, [createAnnotationObject, canvasState.darkMode]);
 
   // Watch for component AND annotation changes together
   // This ensures proper z-ordering: grid -> components -> annotations
@@ -1152,7 +1206,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     // Then sync annotations
     syncAnnotations(viewAnnotations);
     
-    // Ensure proper z-ordering: grid at back, then components, then annotations on top
+    // Ensure proper z-ordering: grid at back
+    // We don't force annotations to front anymore to allow manual layering
     const objects = canvas.getObjects();
     
     // Send all grid objects to back
@@ -1160,14 +1215,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const data = getObjectData(obj);
       if (data?.isGrid) {
         canvas.sendObjectToBack(obj);
-      }
-    });
-    
-    // Bring all annotations to front
-    objects.forEach((obj) => {
-      const data = getObjectData(obj);
-      if (data?.isAnnotation) {
-        canvas.bringObjectToFront(obj);
       }
     });
     

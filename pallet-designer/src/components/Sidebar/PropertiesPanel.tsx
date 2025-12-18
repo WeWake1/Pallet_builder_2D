@@ -522,34 +522,46 @@ export function PropertiesPanel() {
           <div>
             <label className="text-xs text-[var(--color-text-muted)]">Fill</label>
             <div className="flex items-center gap-1">
-              <input
-                type="color"
-                value={colors.fill}
-                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
-                className="w-8 h-8 rounded border border-[var(--color-border)] cursor-pointer"
-              />
+              <div className="relative w-10 h-8">
+                <input
+                  type="color"
+                  value={colors.fill}
+                  onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+                <div 
+                  className="w-full h-full rounded border border-[var(--color-border)]"
+                  style={{ backgroundColor: colors.fill }}
+                />
+              </div>
               <input
                 type="text"
                 value={colors.fill}
                 onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
-                className="flex-1 h-8 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="flex-1 h-8 px-1 rounded border border-[var(--color-border)] text-[10px] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
             </div>
           </div>
           <div>
             <label className="text-xs text-[var(--color-text-muted)]">Stroke</label>
             <div className="flex items-center gap-1">
-              <input
-                type="color"
-                value={colors.stroke}
-                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
-                className="w-8 h-8 rounded border border-[var(--color-border)] cursor-pointer"
-              />
+              <div className="relative w-10 h-8">
+                <input
+                  type="color"
+                  value={colors.stroke}
+                  onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+                <div 
+                  className="w-full h-full rounded border border-[var(--color-border)]"
+                  style={{ backgroundColor: colors.stroke }}
+                />
+              </div>
               <input
                 type="text"
                 value={colors.stroke}
                 onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
-                className="flex-1 h-8 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="flex-1 h-8 px-1 rounded border border-[var(--color-border)] text-[10px] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
             </div>
           </div>
