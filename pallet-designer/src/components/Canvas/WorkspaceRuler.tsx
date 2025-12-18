@@ -130,13 +130,16 @@ export function WorkspaceRuler({
         ctx.fillStyle = colors.text;
         if (orientation === 'horizontal') {
           ctx.textBaseline = 'top';
+          ctx.textAlign = 'center';
           ctx.fillText(String(mm), pos, 2);
         } else {
           // For vertical ruler, draw text horizontally (no rotation)
-          // Position it in the center of the ruler
           ctx.textBaseline = 'middle';
-          ctx.textAlign = 'center';
-          ctx.fillText(String(mm), RULER_SIZE / 2, pos);
+          ctx.textAlign = 'right';
+          // Position text to the left of the ticks (ticks occupy the right half)
+          // RULER_SIZE is 24, major ticks are 12px long (from right edge)
+          // So we have 12px of space on the left. Aligning right at 10px gives 2px padding from ticks.
+          ctx.fillText(String(mm), RULER_SIZE - tickLength - 2, pos);
         }
       }
     }
