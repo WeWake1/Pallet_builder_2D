@@ -533,13 +533,13 @@ export function MultiViewCanvas() {
                   onContextMenu={handleContextMenu}
                   onMouseMove={handleCanvasMouseMove}
                   onMouseLeave={handleCanvasMouseLeave}
-                  className={`bg-white dark:bg-slate-800 shadow-xl relative overflow-hidden transition-all ${
+                  className={`bg-white dark:bg-slate-800 relative transition-all shadow-xl ${
                     isDragOver ? 'ring-4 ring-[var(--color-primary)] ring-opacity-50' : ''
                   }`}
                   style={{
-                    // Add 1px to cover subpixel seams introduced by CSS scaling
-                    width: displayWidth * zoom + 1,
-                    height: displayHeight * zoom + 1,
+                    // Snap to device pixels to avoid 1px seams at certain zoom/DPR values
+                    width: Math.floor(displayWidth * zoom * window.devicePixelRatio) / window.devicePixelRatio,
+                    height: Math.floor(displayHeight * zoom * window.devicePixelRatio) / window.devicePixelRatio,
                     transition: 'width 0.2s, height 0.2s',
                   }}
                 >
@@ -548,6 +548,7 @@ export function MultiViewCanvas() {
                       ref={canvasRef} 
                       width={canvasWidth}
                       height={canvasHeight}
+                      style={{ display: 'block' }}
                     />
                   </div>
 
