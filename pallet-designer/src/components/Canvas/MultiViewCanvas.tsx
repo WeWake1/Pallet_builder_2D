@@ -533,12 +533,13 @@ export function MultiViewCanvas() {
                   onContextMenu={handleContextMenu}
                   onMouseMove={handleCanvasMouseMove}
                   onMouseLeave={handleCanvasMouseLeave}
-                  className={`bg-white shadow-xl relative overflow-hidden transition-all ${
+                  className={`bg-white dark:bg-slate-800 shadow-xl relative overflow-hidden transition-all ${
                     isDragOver ? 'ring-4 ring-[var(--color-primary)] ring-opacity-50' : ''
                   }`}
                   style={{
-                    width: displayWidth * zoom,
-                    height: displayHeight * zoom,
+                    // Add 1px to cover subpixel seams introduced by CSS scaling
+                    width: displayWidth * zoom + 1,
+                    height: displayHeight * zoom + 1,
                     transition: 'width 0.2s, height 0.2s',
                   }}
                 >
