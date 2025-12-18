@@ -137,7 +137,14 @@ function CanvasSettingsPanel() {
 }
 
 function AnnotationPropertiesPanel({ annotation }: { annotation: Annotation }) {
-  const { updateAnnotation, deleteAnnotation } = useStore();
+  const { 
+    updateAnnotation, 
+    deleteAnnotation,
+    bringAnnotationToFront,
+    bringAnnotationForward,
+    sendAnnotationToBack,
+    sendAnnotationBackward
+  } = useStore();
 
   const handlePositionChange = (key: 'x' | 'y', value: string) => {
     const numValue = parseInt(value, 10);
@@ -322,6 +329,55 @@ function AnnotationPropertiesPanel({ annotation }: { annotation: Annotation }) {
           </div>
         </div>
       )}
+
+      {/* Layer Ordering */}
+      <div>
+        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+          Layer Order
+        </h4>
+        <div className="grid grid-cols-4 gap-1">
+          <button
+            onClick={() => sendAnnotationToBack(annotation.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Send to Back"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+          </button>
+          <button
+            onClick={() => sendAnnotationBackward(annotation.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Send Backward"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => bringAnnotationForward(annotation.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Bring Forward"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => bringAnnotationToFront(annotation.id)}
+            className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
+            title="Bring to Front"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex justify-between text-[10px] text-[var(--color-text-muted)] mt-1 px-1">
+          <span>Back</span>
+          <span>Front</span>
+        </div>
+      </div>
 
       {/* Actions */}
       <div className="pt-2">
@@ -521,8 +577,8 @@ export function PropertiesPanel() {
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-xs text-[var(--color-text-muted)]">Fill</label>
-            <div className="flex items-center gap-1">
-              <div className="relative w-10 h-8">
+            <div className="flex items-center gap-2 mt-1">
+              <div className="relative w-6 h-6 shrink-0">
                 <input
                   type="color"
                   value={colors.fill}
@@ -530,7 +586,7 @@ export function PropertiesPanel() {
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
                 <div 
-                  className="w-full h-full rounded border border-[var(--color-border)]"
+                  className="w-full h-full rounded border border-[var(--color-border)] shadow-sm"
                   style={{ backgroundColor: colors.fill }}
                 />
               </div>
@@ -538,14 +594,14 @@ export function PropertiesPanel() {
                 type="text"
                 value={colors.fill}
                 onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
-                className="flex-1 h-8 px-1 rounded border border-[var(--color-border)] text-[10px] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="flex-1 h-7 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
             </div>
           </div>
           <div>
             <label className="text-xs text-[var(--color-text-muted)]">Stroke</label>
-            <div className="flex items-center gap-1">
-              <div className="relative w-10 h-8">
+            <div className="flex items-center gap-2 mt-1">
+              <div className="relative w-6 h-6 shrink-0">
                 <input
                   type="color"
                   value={colors.stroke}
@@ -553,7 +609,7 @@ export function PropertiesPanel() {
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
                 <div 
-                  className="w-full h-full rounded border border-[var(--color-border)]"
+                  className="w-full h-full rounded border border-[var(--color-border)] shadow-sm"
                   style={{ backgroundColor: colors.stroke }}
                 />
               </div>
@@ -561,7 +617,7 @@ export function PropertiesPanel() {
                 type="text"
                 value={colors.stroke}
                 onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
-                className="flex-1 h-8 px-1 rounded border border-[var(--color-border)] text-[10px] font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                className="flex-1 h-7 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
             </div>
           </div>

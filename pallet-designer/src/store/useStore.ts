@@ -592,6 +592,81 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
     });
   },
 
+  // Annotation Layer ordering actions
+  bringAnnotationToFront: (id) => {
+    const { annotations, canvas } = get();
+    const view = canvas.activeView;
+    const viewAnnotations = annotations[view];
+    const index = viewAnnotations.findIndex((a) => a.id === id);
+    
+    if (index === -1 || index === viewAnnotations.length - 1) return;
+    
+    const annotation = viewAnnotations[index];
+    const newAnnotations = [
+      ...viewAnnotations.slice(0, index),
+      ...viewAnnotations.slice(index + 1),
+      annotation,
+    ];
+    
+    set({
+      annotations: { ...annotations, [view]: newAnnotations },
+    });
+  },
+
+  bringAnnotationForward: (id) => {
+    const { annotations, canvas } = get();
+    const view = canvas.activeView;
+    const viewAnnotations = annotations[view];
+    const index = viewAnnotations.findIndex((a) => a.id === id);
+    
+    if (index === -1 || index === viewAnnotations.length - 1) return;
+    
+    const newAnnotations = [...viewAnnotations];
+    // Swap with next element
+    [newAnnotations[index], newAnnotations[index + 1]] = [newAnnotations[index + 1], newAnnotations[index]];
+    
+    set({
+      annotations: { ...annotations, [view]: newAnnotations },
+    });
+  },
+
+  sendAnnotationToBack: (id) => {
+    const { annotations, canvas } = get();
+    const view = canvas.activeView;
+    const viewAnnotations = annotations[view];
+    const index = viewAnnotations.findIndex((a) => a.id === id);
+    
+    if (index <= 0) return;
+    
+    const annotation = viewAnnotations[index];
+    const newAnnotations = [
+      annotation,
+      ...viewAnnotations.slice(0, index),
+      ...viewAnnotations.slice(index + 1),
+    ];
+    
+    set({
+      annotations: { ...annotations, [view]: newAnnotations },
+    });
+  },
+
+  sendAnnotationBackward: (id) => {
+    const { annotations, canvas } = get();
+    const view = canvas.activeView;
+    const viewAnnotations = annotations[view];
+    const index = viewAnnotations.findIndex((a) => a.id === id);
+    
+    if (index <= 0) return;
+    
+    const newAnnotations = [...viewAnnotations];
+    // Swap with previous element
+    [newAnnotations[index - 1], newAnnotations[index]] = [newAnnotations[index], newAnnotations[index - 1]];
+    
+    set({
+      annotations: { ...annotations, [view]: newAnnotations },
+    });
+  },
+
   // Reset
   resetCanvas: () => {
     set({

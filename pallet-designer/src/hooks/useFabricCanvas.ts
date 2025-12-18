@@ -139,6 +139,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   const captureHistoryRef = useRef<() => void>(() => {});
   const isUpdatingSelectionRef = useRef(false); // Prevent circular selection updates
   const isDraggingRef = useRef(false); // Track if we're currently dragging (for history capture)
+  const selectedComponentIdsRef = useRef<string[]>([]);
+  const selectedAnnotationIdRef = useRef<string | null>(null);
   // Track canvas version to force re-sync when canvas is recreated (e.g., after tab switch)
   const [canvasVersion, setCanvasVersion] = useState(0);
   const { 
@@ -160,6 +162,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     updateAnnotationRef.current = updateAnnotation;
     captureHistoryRef.current = captureHistory;
   }, [updateAnnotation, captureHistory]);
+
+  // Keep selection refs in sync with store
+  useEffect(() => {
+    selectedComponentIdsRef.current = selectedComponentIds;
+    selectedAnnotationIdRef.current = selectedAnnotationId;
+  }, [selectedComponentIds, selectedAnnotationId]);
 
   // Keep snap state ref in sync with store (separate from grid visibility)
   useEffect(() => {
@@ -732,27 +740,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     // Re-add them in the correct order (store order)
     componentObjects.forEach((obj) => canvas.add(obj));
 
-    // Restore selection if needed
-    // We need to ensure the active object is still set correctly after re-adding
-    if (selectedComponentIds.length > 0) {
-      const objectsToSelect = canvas.getObjects().filter((o) => {
-        const data = getObjectData(o);
-        return data?.id && selectedComponentIds.includes(data.id) && !data.isLabel && !data.isGrid;
-      });
-      
-      if (objectsToSelect.length > 0) {
-        if (objectsToSelect.length === 1) {
-          // Only set if not already active (to avoid unnecessary events)
-          if (canvas.getActiveObject() !== objectsToSelect[0]) {
-            canvas.setActiveObject(objectsToSelect[0]);
-          }
-        } else {
-          const activeSelection = new fabric.ActiveSelection(objectsToSelect, { canvas });
-          canvas.setActiveObject(activeSelection);
-        }
-      }
-    }
-
     // Re-enable selection events
     isUpdatingSelectionRef.current = false;
 
@@ -1217,6 +1204,53 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         canvas.sendObjectToBack(obj);
       }
     });
+
+    // Restore selection state after sync
+    // This is crucial because removing/re-adding objects (in syncComponents) clears selection
+    const selectedComponentIds = selectedComponentIdsRef.current;
+    const selectedAnnotationId = selectedAnnotationIdRef.current;
+
+    if (selectedComponentIds.length > 0) {
+      const objectsToSelect = canvas.getObjects().filter((o) => {
+        const data = getObjectData(o);
+        return data?.id && selectedComponentIds.includes(data.id) && !data.isLabel && !data.isGrid;
+      });
+      
+      if (objectsToSelect.length > 0) {
+        // Temporarily disable selection events to prevent loops
+        isUpdatingSelectionRef.current = true;
+        if (objectsToSelect.length === 1) {
+          if (canvas.getActiveObject() !== objectsToSelect[0]) {
+            canvas.setActiveObject(objectsToSelect[0]);
+          }
+        } else {
+          // Check if current selection is already correct to avoid flicker
+          const currentActive = canvas.getActiveObject();
+          const isSameSelection = currentActive instanceof fabric.ActiveSelection && 
+            currentActive.getObjects().length === objectsToSelect.length &&
+            currentActive.getObjects().every(o => objectsToSelect.includes(o));
+            
+          if (!isSameSelection) {
+            const activeSelection = new fabric.ActiveSelection(objectsToSelect, { canvas });
+            canvas.setActiveObject(activeSelection);
+          }
+        }
+        isUpdatingSelectionRef.current = false;
+      }
+    } else if (selectedAnnotationId) {
+      const annotationObj = canvas.getObjects().find((o) => {
+        const data = getObjectData(o);
+        return data?.id === selectedAnnotationId && data.isAnnotation;
+      });
+
+      if (annotationObj) {
+        isUpdatingSelectionRef.current = true;
+        if (canvas.getActiveObject() !== annotationObj) {
+          canvas.setActiveObject(annotationObj);
+        }
+        isUpdatingSelectionRef.current = false;
+      }
+    }
     
     canvas.renderAll();
   }, [components, annotations, canvasState.activeView, syncComponents, syncAnnotations, canvasVersion]);
@@ -1276,3 +1310,4 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
   return fabricRef;
 }
+

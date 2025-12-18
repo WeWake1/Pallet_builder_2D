@@ -241,6 +241,12 @@ export interface AppActions {
   sendToBack: (id: string) => void;
   sendBackward: (id: string) => void;
   
+  // Annotation Layer ordering actions
+  bringAnnotationToFront: (id: string) => void;
+  bringAnnotationForward: (id: string) => void;
+  sendAnnotationToBack: (id: string) => void;
+  sendAnnotationBackward: (id: string) => void;
+  
   // History actions
   undo: () => void;
   redo: () => void;
