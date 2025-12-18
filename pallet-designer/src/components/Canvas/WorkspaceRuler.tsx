@@ -96,7 +96,7 @@ export function WorkspaceRuler({
     const startMm = 0;
     const endMm = orientation === 'horizontal' ? 210 : 297; // A4 dimensions in mm
     
-    ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+  ctx.font = '11px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
@@ -127,7 +127,8 @@ export function WorkspaceRuler({
       
       // Draw labels for major ticks
       if (isMajor) {
-        ctx.fillStyle = colors.text;
+        // Improve label readability (especially on the vertical ruler)
+        ctx.fillStyle = isDarkMode ? '#e2e8f0' : '#334155';
         if (orientation === 'horizontal') {
           ctx.textBaseline = 'top';
           ctx.textAlign = 'center';
@@ -136,10 +137,10 @@ export function WorkspaceRuler({
           // For vertical ruler, draw text horizontally (no rotation)
           ctx.textBaseline = 'middle';
           ctx.textAlign = 'right';
-          // Position text to the left of the ticks (ticks occupy the right half)
-          // RULER_SIZE is 24, major ticks are 12px long (from right edge)
-          // So we have 12px of space on the left. Aligning right at 10px gives 2px padding from ticks.
-          ctx.fillText(String(mm), RULER_SIZE - tickLength - 2, pos);
+          // Position text well inside the ruler to avoid clipping on the left edge.
+          // Keep it left of the tick marks.
+          const labelX = Math.max(2, RULER_SIZE - tickLength - 4);
+          ctx.fillText(String(mm), labelX, pos);
         }
       }
     }
@@ -195,7 +196,7 @@ export function WorkspaceRuler({
         }
       }
     }
-  }, [orientation, containerSize, canvasOffset, canvasSize, zoom, colors, cursorPosition]);
+  }, [orientation, containerSize, canvasOffset, canvasSize, zoom, colors, cursorPosition, isDarkMode]);
 
   useEffect(() => {
     draw();

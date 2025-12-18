@@ -92,8 +92,6 @@ const createComponentShape = (
       L ${halfW - chamferSize} ${-halfH}
       L ${halfW} ${-halfH + chamferSize}
       L ${halfW} ${halfH - chamferSize}
-      L ${halfW - chamferSize} ${halfH}
-      L ${-halfW + chamferSize} ${halfH}
       L ${-halfW} ${halfH - chamferSize}
       L ${-halfW} ${-halfH + chamferSize}
       Z
@@ -529,11 +527,10 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const gridSizeMm = canvasState.gridSize; // Grid size in mm
       
       // Colors - slightly more visible
-      const minorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)';
-      const majorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.15)';
-      const borderColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)';
-      
-  const gridLines: fabric.FabricObject[] = [];
+    const minorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)';
+    const majorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.15)';
+
+    const gridLines: fabric.FabricObject[] = [];
       
       // Paper dimensions in pixels (always use exact A4 dimensions)
       const paperWidthPx = A4_WIDTH_PX;
@@ -552,23 +549,21 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         return snapped / (zoomForCrisp * dpr);
       };
 
-  // If the paper size isn't divisible by the major interval (50mm),
-  // add an explicit major line on the far edge so the pattern "finishes".
-  const MAJOR_MM = 50;
+      // Major grid spacing (big squares)
+      const MAJOR_MM = 50;
+      // Offset major grid so that a major line lands exactly on the far edge.
+      // Example: 210mm => offset 10mm, so majors are at 10,60,110,160,210.
+      const majorOffsetY = ((paperHeightMm % MAJOR_MM) + MAJOR_MM) % MAJOR_MM;
 
-  // Draw vertical lines (including edges at 0 and 210mm)
-      // Use integer indices to avoid float accumulation.
+      // Draw vertical lines (NO major verticals - per UX request)
       const vCount = Math.floor(paperWidthMm / gridSizeMm);
       for (let i = 0; i <= vCount; i++) {
         const xMm = i * gridSizeMm;
-        const isMajor = (xMm % 50 === 0);
-        const isEdge = (xMm === 0);
-        const strokeWidth = isEdge ? 1 : (isMajor ? 1 : 0.5);
+        const strokeWidth = 0.5;
         const xPx = snapToDevicePixel(xMm * CANVAS_SCALE, strokeWidth);
-        
-        // Vertical line spans full paper height
+
         const line = new fabric.Line([xPx, 0, xPx, paperHeightPx], {
-          stroke: isEdge ? borderColor : (isMajor ? majorColor : minorColor),
+          stroke: minorColor,
           strokeWidth,
           selectable: false,
           evented: false,
@@ -579,54 +574,19 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         gridLines.push(line);
       }
       
-      // Always draw the final right edge (210mm) exactly.
-      {
-        const xMm = paperWidthMm;
-        const shouldBeMajorEdge = (paperWidthMm % MAJOR_MM) !== 0;
-        const strokeWidth = 1;
-        const edgeStroke = shouldBeMajorEdge ? strokeWidth : strokeWidth;
-        const xPx = snapToDevicePixel(paperWidthPx, strokeWidth);
-        const line = new fabric.Line([xPx, 0, xPx, paperHeightPx], {
-          stroke: borderColor,
-          strokeWidth: edgeStroke,
-          selectable: false,
-          evented: false,
-          excludeFromExport: true,
-          strokeUniform: true,
-        });
-        setObjectData(line, { id: `grid-v-${xMm}`, type: 'grid', isGrid: true });
-        gridLines.push(line);
-      }
-
-      // Add a "major" line at the right edge as well, so the 50mm blocks
-      // visually complete even when 210mm isn't divisible by 50mm.
-      if ((paperWidthMm % MAJOR_MM) !== 0) {
-        const strokeWidth = 1;
-        const xPx = snapToDevicePixel(paperWidthPx, strokeWidth);
-        const line = new fabric.Line([xPx, 0, xPx, paperHeightPx], {
-          stroke: majorColor,
-          strokeWidth,
-          selectable: false,
-          evented: false,
-          excludeFromExport: true,
-          strokeUniform: true,
-        });
-        setObjectData(line, { id: `grid-v-major-edge`, type: 'grid', isGrid: true });
-        gridLines.push(line);
-      }
+      // (No extra edge overlays needed; edges are included in the loop)
       
       // Draw horizontal lines (including edges at 0 and 297mm)
       const hCount = Math.floor(paperHeightMm / gridSizeMm);
       for (let i = 0; i <= hCount; i++) {
         const yMm = i * gridSizeMm;
-        const isMajor = (yMm % 50 === 0);
-        const isEdge = (yMm === 0);
-        const strokeWidth = isEdge ? 1 : (isMajor ? 1 : 0.5);
+        const isMajor = ((yMm - majorOffsetY) % MAJOR_MM === 0);
+        const strokeWidth = isMajor ? 1 : 0.5;
         const yPx = snapToDevicePixel(yMm * CANVAS_SCALE, strokeWidth);
         
         // Horizontal line spans full paper width
         const line = new fabric.Line([0, yPx, paperWidthPx, yPx], {
-          stroke: isEdge ? borderColor : (isMajor ? majorColor : minorColor),
+          stroke: isMajor ? majorColor : minorColor,
           strokeWidth,
           selectable: false,
           evented: false,
@@ -637,39 +597,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         gridLines.push(line);
       }
       
-      // Always draw the final bottom edge (297mm) exactly.
-      {
-        const yMm = paperHeightMm;
-        const strokeWidth = 1;
-        const yPx = snapToDevicePixel(paperHeightPx, strokeWidth);
-        const line = new fabric.Line([0, yPx, paperWidthPx, yPx], {
-          stroke: borderColor,
-          strokeWidth,
-          selectable: false,
-          evented: false,
-          excludeFromExport: true,
-          strokeUniform: true,
-        });
-        setObjectData(line, { id: `grid-h-${yMm}`, type: 'grid', isGrid: true });
-        gridLines.push(line);
-      }
-
-      // Add a "major" line at the bottom edge as well, so the 50mm blocks
-      // visually complete even when 297mm isn't divisible by 50mm.
-      if ((paperHeightMm % MAJOR_MM) !== 0) {
-        const strokeWidth = 1;
-        const yPx = snapToDevicePixel(paperHeightPx, strokeWidth);
-        const line = new fabric.Line([0, yPx, paperWidthPx, yPx], {
-          stroke: majorColor,
-          strokeWidth,
-          selectable: false,
-          evented: false,
-          excludeFromExport: true,
-          strokeUniform: true,
-        });
-        setObjectData(line, { id: `grid-h-major-edge`, type: 'grid', isGrid: true });
-        gridLines.push(line);
-      }
+      // (No extra edge overlays needed; edges are included in the loop)
 
       // Group and lock transforms so the grid never shifts and strokes don't scale.
       const gridGroup = new fabric.Group(gridLines, {
