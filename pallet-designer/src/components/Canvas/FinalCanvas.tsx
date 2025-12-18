@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../../store/useStore';
 import * as fabric from 'fabric';
-import { VIEW_LABELS, A4_WIDTH_PX, A4_HEIGHT_PX, CANVAS_SCALE, COMPONENT_COLORS, DEFAULT_GRID_SIZE } from '../../constants';
+import { VIEW_LABELS, A4_WIDTH_PX, A4_HEIGHT_PX, CANVAS_SCALE, COMPONENT_COLORS } from '../../constants';
 import type { ViewType } from '../../types';
 
 interface FinalCanvasProps {
@@ -160,7 +160,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
     // Document title
     const docTitle = new fabric.FabricText('Pallet Specification Drawing', {
       left: MARGIN,
-      top: MARGIN + 14 * CANVAS_SCALE / 2,
+      top: MARGIN + 25 * CANVAS_SCALE / 2,
       fontSize: 14 * CANVAS_SCALE / 2,
       fill: textColor,
       fontFamily: 'Arial',
@@ -189,7 +189,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
 
     const dateText = new fabric.FabricText(`Date: ${today}`, {
       left: TEMPLATE_WIDTH - MARGIN,
-      top: MARGIN + 8 * CANVAS_SCALE / 2,
+      top: MARGIN + 12 * CANVAS_SCALE / 2,
       fontSize: 9 * CANVAS_SCALE / 2,
       fill: isDarkMode ? '#94a3b8' : '#6b7280',
       fontFamily: 'Arial',
@@ -200,7 +200,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
     canvas.add(dateText);
 
     // Header line
-    const headerY = MARGIN + 20 * CANVAS_SCALE / 2;
+    const headerY = MARGIN + 45 * CANVAS_SCALE / 2;
     const headerLine = new fabric.Line([MARGIN, headerY, TEMPLATE_WIDTH - MARGIN, headerY], {
       stroke: primaryColor,
       strokeWidth: 1.5,
@@ -375,31 +375,6 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
         // Width constrained
         viewScale = contentArea.width / A4_WIDTH_PX;
         offsetY = (contentArea.height - A4_HEIGHT_PX * viewScale) / 2;
-      }
-
-      // Draw grid in view
-      const gridSizePx = DEFAULT_GRID_SIZE * CANVAS_SCALE * viewScale;
-      const gridColor = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
-      
-      for (let i = 0; i <= A4_WIDTH_PX * viewScale / gridSizePx; i++) {
-        const x = contentArea.x + offsetX + i * gridSizePx;
-        const line = new fabric.Line([x, contentArea.y + offsetY, x, contentArea.y + offsetY + A4_HEIGHT_PX * viewScale], {
-          stroke: gridColor,
-          strokeWidth: 0.5,
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(line);
-      }
-      for (let i = 0; i <= A4_HEIGHT_PX * viewScale / gridSizePx; i++) {
-        const y = contentArea.y + offsetY + i * gridSizePx;
-        const line = new fabric.Line([contentArea.x + offsetX, y, contentArea.x + offsetX + A4_WIDTH_PX * viewScale, y], {
-          stroke: gridColor,
-          strokeWidth: 0.5,
-          selectable: false,
-          evented: false,
-        });
-        canvas.add(line);
       }
 
       // Render components
