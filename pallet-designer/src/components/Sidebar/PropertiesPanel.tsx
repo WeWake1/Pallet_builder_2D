@@ -213,9 +213,23 @@ function AnnotationPropertiesPanel({ annotation }: { annotation: Annotation }) {
             Value (mm)
           </h4>
           <input
-            type="number"
-            value={annotation.value}
-            onChange={(e) => updateAnnotation(annotation.id, { value: parseInt(e.target.value) || 0 })}
+            type="text"
+            defaultValue={annotation.value}
+            key={annotation.value} // Force re-render when external value changes
+            onBlur={(e) => {
+              const val = parseInt(e.target.value, 10);
+              if (!isNaN(val)) {
+                updateAnnotation(annotation.id, { value: val });
+              } else {
+                // Reset to current value if invalid
+                e.target.value = annotation.value.toString();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur();
+              }
+            }}
             className="w-full h-8 px-2 rounded border border-[var(--color-border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
           />
         </div>

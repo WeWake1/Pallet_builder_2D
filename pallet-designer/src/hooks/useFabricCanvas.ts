@@ -480,9 +480,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             // Show a prompt for editing dimension value
             const currentValue = textObj.text || '0';
             const newValue = prompt('Enter dimension value (mm):', currentValue);
-            if (newValue !== null && !isNaN(Number(newValue))) {
-              const numValue = parseInt(newValue, 10);
-              textObj.set({ text: `${numValue}` });
+            
+            // Parse the input value (handle "mm" suffix if user typed it)
+            const numValue = parseInt(newValue || '', 10);
+            
+            if (newValue !== null && !isNaN(numValue)) {
+              textObj.set({ text: `${numValue}mm` });
               canvas.renderAll();
               
               // Update store
@@ -946,8 +949,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         const dx = Math.cos(groupAngleRad) * halfNewLength;
         const dy = Math.sin(groupAngleRad) * halfNewLength;
         
-        updateAnnotationRef.current(annotationId, {
-          value: newValueMm,
+        const updates: Partial<DimensionAnnotation> = {
           startPosition: {
             x: Math.round((groupLeft - dx) / CANVAS_SCALE),
             y: Math.round((groupTop - dy) / CANVAS_SCALE),
@@ -956,7 +958,15 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             x: Math.round((groupLeft + dx) / CANVAS_SCALE),
             y: Math.round((groupTop + dy) / CANVAS_SCALE),
           },
-        });
+        };
+
+        // Only update value if the object was actually scaled (resized)
+        // If it was just moved/rotated (scaleX is close to 1), keep the existing value
+        if (Math.abs(scaleX - 1) > 0.001) {
+          updates.value = newValueMm;
+        }
+
+        updateAnnotationRef.current(annotationId, updates);
         
         // Reset scale
         group.set({ scaleX: 1, scaleY: 1 });
@@ -1131,6 +1141,22 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             top: midY,
             angle: lineAngleDeg,
           });
+
+          // Update dimension text if value changed
+          if (existingObj instanceof fabric.Group) {
+            const textObj = existingObj.getObjects().find((o) => o instanceof fabric.IText);
+            if (textObj && textObj instanceof fabric.IText) {
+              const lineLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+              const distanceMm = Math.round(lineLength / CANVAS_SCALE);
+              const displayValue = annotation.value > 0 ? annotation.value : distanceMm;
+              const newText = `${displayValue}mm`;
+              
+              if (textObj.text !== newText) {
+                textObj.set({ text: newText });
+              }
+            }
+          }
+
           existingObj.setCoords();
         } else if (annotation.type === 'callout') {
           existingObj.set({
