@@ -21,6 +21,10 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     copyComponent,
     pasteComponent,
     deleteAnnotation,
+    bringAnnotationToFront,
+    bringAnnotationForward,
+    sendAnnotationToBack,
+    sendAnnotationBackward,
   } = useStore();
 
   // Close on click outside
@@ -79,12 +83,18 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     if (componentId) {
       bringToFront(componentId);
     }
+    if (annotationId) {
+      bringAnnotationToFront(annotationId);
+    }
     onClose();
   };
 
   const handleBringForward = () => {
     if (componentId) {
       bringForward(componentId);
+    }
+    if (annotationId) {
+      bringAnnotationForward(annotationId);
     }
     onClose();
   };
@@ -93,12 +103,18 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     if (componentId) {
       sendToBack(componentId);
     }
+    if (annotationId) {
+      sendAnnotationToBack(annotationId);
+    }
     onClose();
   };
 
   const handleSendBackward = () => {
     if (componentId) {
       sendBackward(componentId);
+    }
+    if (annotationId) {
+      sendAnnotationBackward(annotationId);
     }
     onClose();
   };
@@ -115,7 +131,7 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     >
       {(componentId || annotationId) ? (
         <>
-          {/* Edit actions - only for components */}
+          {/* Edit actions - for components only (copy, duplicate) */}
           {componentId && (
             <>
               <button
@@ -145,57 +161,57 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
               </button>
 
               <div className="h-px bg-[var(--color-border)] my-1" />
-
-              {/* Layer submenu */}
-              <div className="relative group">
-                <button className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                    Layer
-                  </span>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-                
-                {/* Layer submenu - shows on hover */}
-                <div className="absolute left-full top-0 ml-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg py-1 min-w-[160px] hidden group-hover:block">
-                  <button
-                    onClick={handleBringToFront}
-                    className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
-                  >
-                    Bring to front
-                    <span className="text-xs text-[var(--color-text-muted)]">⌘]</span>
-                  </button>
-                  <button
-                    onClick={handleBringForward}
-                    className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
-                  >
-                    Bring forward
-                    <span className="text-xs text-[var(--color-text-muted)]">]</span>
-                  </button>
-                  <button
-                    onClick={handleSendBackward}
-                    className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
-                  >
-                    Send backward
-                    <span className="text-xs text-[var(--color-text-muted)]">[</span>
-                  </button>
-                  <button
-                    onClick={handleSendToBack}
-                    className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
-                  >
-                    Send to back
-                    <span className="text-xs text-[var(--color-text-muted)]">⌘[</span>
-                  </button>
-                </div>
-              </div>
-
-              <div className="h-px bg-[var(--color-border)] my-1" />
             </>
           )}
+
+          {/* Layer submenu - available for both components and annotations */}
+          <div className="relative group">
+            <button className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                Layer
+              </span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            
+            {/* Layer submenu - shows on hover */}
+            <div className="absolute left-full top-0 ml-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-lg shadow-lg py-1 min-w-[160px] hidden group-hover:block">
+              <button
+                onClick={handleBringToFront}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+              >
+                Bring to front
+                <span className="text-xs text-[var(--color-text-muted)]">⌘]</span>
+              </button>
+              <button
+                onClick={handleBringForward}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+              >
+                Bring forward
+                <span className="text-xs text-[var(--color-text-muted)]">]</span>
+              </button>
+              <button
+                onClick={handleSendBackward}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+              >
+                Send backward
+                <span className="text-xs text-[var(--color-text-muted)]">[</span>
+              </button>
+              <button
+                onClick={handleSendToBack}
+                className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+              >
+                Send to back
+                <span className="text-xs text-[var(--color-text-muted)]">⌘[</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="h-px bg-[var(--color-border)] my-1" />
 
           {/* Delete - available for both components and annotations */}
           <button

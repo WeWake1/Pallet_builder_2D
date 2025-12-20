@@ -630,12 +630,13 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, width, height, canvasVersion]);
 
   // Update canvas background for dark mode
+  // Also trigger on canvasVersion to ensure correct colors after tab switch
   useEffect(() => {
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
     canvas.backgroundColor = canvasState.darkMode ? '#1e293b' : '#ffffff';
     canvas.renderAll();
-  }, [canvasState.darkMode]);
+  }, [canvasState.darkMode, canvasVersion]);
 
   // Sync components to canvas
   const syncComponents = useCallback((viewComponents: PalletComponent[]) => {
@@ -899,6 +900,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const annotationId = annotation.id;
       
       // Create the group centered at midpoint
+      // Disable scaling controls - we don't want the dimension value to change on scale
       const group = new fabric.Group([leftLine, rightLine, cap1, cap2, text], {
         left: midX,
         top: midY,
@@ -910,46 +912,24 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         evented: true,
         hasControls: true,
         hasBorders: true,
-        lockScalingFlip: true,
+        lockScalingX: true,
+        lockScalingY: true,
       });
       
-      // Handle scaling - update dimension value dynamically
-      group.on('scaling', () => {
-        const scaleX = group.scaleX || 1;
-        const scaleY = group.scaleY || 1;
-        
-        // Calculate new dimension based on horizontal scale
-        const newLength = lineLength * scaleX;
-        const newValueMm = Math.round(newLength / CANVAS_SCALE);
-        
-        // Update the text
-        const textObj = group.getObjects().find((o) => o instanceof fabric.IText);
-        if (textObj && textObj instanceof fabric.IText) {
-          textObj.set({ 
-            text: `${newValueMm}mm`,
-            scaleX: 1 / scaleX,
-            scaleY: 1 / scaleY,
-          });
-        }
-      });
-      
-      // Handle modification complete - save to store
+      // Handle modification complete - save position to store (no scaling)
       group.on('modified', () => {
-        const scaleX = group.scaleX || 1;
         const groupAngle = group.angle || 0;
         const groupAngleRad = (groupAngle * Math.PI) / 180;
         
-        const newLength = lineLength * scaleX;
-        const newValueMm = Math.round(newLength / CANVAS_SCALE);
-        
         const groupLeft = group.left || 0;
         const groupTop = group.top || 0;
-        const halfNewLength = (newLength / 2);
+        const halfLen = lineLength / 2;
         
-        const dx = Math.cos(groupAngleRad) * halfNewLength;
-        const dy = Math.sin(groupAngleRad) * halfNewLength;
+        const dx = Math.cos(groupAngleRad) * halfLen;
+        const dy = Math.sin(groupAngleRad) * halfLen;
         
-        const updates: Partial<DimensionAnnotation> = {
+        // Only update positions, never touch the value
+        updateAnnotationRef.current(annotationId, {
           startPosition: {
             x: Math.round((groupLeft - dx) / CANVAS_SCALE),
             y: Math.round((groupTop - dy) / CANVAS_SCALE),
@@ -958,22 +938,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             x: Math.round((groupLeft + dx) / CANVAS_SCALE),
             y: Math.round((groupTop + dy) / CANVAS_SCALE),
           },
-        };
-
-        // Only update value if the object was actually scaled (resized)
-        // If it was just moved/rotated (scaleX is close to 1), keep the existing value
-        if (Math.abs(scaleX - 1) > 0.001) {
-          updates.value = newValueMm;
-        }
-
-        updateAnnotationRef.current(annotationId, updates);
-        
-        // Reset scale
-        group.set({ scaleX: 1, scaleY: 1 });
-        group.getObjects().forEach((obj) => {
-          if (obj instanceof fabric.Text) {
-            obj.set({ scaleX: 1, scaleY: 1 });
-          }
         });
       });
       
@@ -988,13 +952,16 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Create a movable group for the callout
       // The group contains: anchor circle, leader line, and text
       
+      // Dark mode color handling for callout
+      const calloutColor = canvasState.darkMode ? '#ffffff' : '#333333';
+      
       // Circle at anchor point (relative to group origin)
       const circle = new fabric.Circle({
         left: 0,
         top: 0,
         radius: 5,
         fill: '#ff6b6b',
-        stroke: '#333333',
+        stroke: calloutColor,
         strokeWidth: 1.5,
         originX: 'center',
         originY: 'center',
@@ -1005,7 +972,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const lineEndX = textX - anchorX;
       const lineEndY = textY - anchorY;
       const line = new fabric.Line([0, 0, lineEndX, lineEndY], {
-        stroke: '#333333',
+        stroke: calloutColor,
         strokeWidth: 1.5,
         selectable: false,
       });
@@ -1015,7 +982,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         left: lineEndX,
         top: lineEndY - 8,
         fontSize: 12,
-        fill: '#333333',
+        fill: calloutColor,
         fontFamily: 'Arial',
         backgroundColor: '', // Clear/transparent background
         selectable: false,
@@ -1163,6 +1130,21 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             left: annotation.anchorPosition.x * CANVAS_SCALE,
             top: annotation.anchorPosition.y * CANVAS_SCALE,
           });
+          
+          // Update callout colors for dark mode
+          if (existingObj instanceof fabric.Group) {
+            const calloutColor = canvasState.darkMode ? '#ffffff' : '#333333';
+            existingObj.getObjects().forEach((obj) => {
+              if (obj instanceof fabric.IText) {
+                obj.set({ fill: calloutColor });
+              } else if (obj instanceof fabric.Line) {
+                obj.set({ stroke: calloutColor });
+              } else if (obj instanceof fabric.Circle) {
+                obj.set({ stroke: calloutColor });
+              }
+            });
+          }
+          
           existingObj.setCoords();
         }
       } else {
@@ -1189,7 +1171,30 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
 
-    // Note: z-ordering is handled in the combined sync effect
+    // Reorder annotation objects to match the store array order (z-ordering)
+    // Similar to how we handle components
+    const annotationObjects: fabric.FabricObject[] = [];
+    viewAnnotations.forEach((annotation) => {
+      const fabricObj = canvas.getObjects().find((obj) => {
+        const data = getObjectData(obj);
+        return data?.id === annotation.id && data.isAnnotation;
+      });
+      if (fabricObj) {
+        annotationObjects.push(fabricObj);
+      }
+    });
+    
+    // Temporarily disable selection events to prevent clearing selection during reordering
+    isUpdatingSelectionRef.current = true;
+
+    // Remove all annotation objects from canvas
+    annotationObjects.forEach((obj) => canvas.remove(obj));
+    
+    // Re-add them in the correct order (store order)
+    annotationObjects.forEach((obj) => canvas.add(obj));
+
+    // Re-enable selection events
+    isUpdatingSelectionRef.current = false;
 
     canvas.renderAll();
   }, [createAnnotationObject, canvasState.darkMode]);
