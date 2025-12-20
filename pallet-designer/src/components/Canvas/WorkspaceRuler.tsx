@@ -111,7 +111,10 @@ export function WorkspaceRuler({
       
       if (!isMajor && !isMinor) continue;
       
-      const tickLength = isMajor ? RULER_SIZE * 0.5 : RULER_SIZE * 0.25;
+      const tickLength = isMajor ? RULER_SIZE * 0.35 : RULER_SIZE * 0.2;
+      
+      // Less opaque lines
+      ctx.globalAlpha = 0.4;
       ctx.strokeStyle = isMajor ? colors.majorTick : colors.tick;
       ctx.lineWidth = isMajor ? 1 : 0.5;
       
@@ -125,6 +128,9 @@ export function WorkspaceRuler({
       }
       ctx.stroke();
       
+      // Reset opacity for text
+      ctx.globalAlpha = 1.0;
+      
       // Draw labels for major ticks
       if (isMajor) {
         // Improve label readability (especially on the vertical ruler)
@@ -134,15 +140,10 @@ export function WorkspaceRuler({
           ctx.textAlign = 'center';
           ctx.fillText(String(mm), pos, 2);
         } else {
-          // For vertical ruler, match the horizontal ruler style:
-          // - put labels just below the tick mark
-          // - align left so digits don't get clipped
-          ctx.textBaseline = 'top';
+          // Vertical ruler - horizontal text (upright)
+          ctx.textBaseline = 'middle';
           ctx.textAlign = 'left';
-          // Keep text away from the tick area (ticks start from the right edge)
-          const labelX = 2;
-          const labelY = pos - 6; // center-ish around the major tick
-          ctx.fillText(String(mm), labelX, labelY);
+          ctx.fillText(String(mm), 2, pos);
         }
       }
     }
