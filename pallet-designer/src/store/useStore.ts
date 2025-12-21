@@ -96,6 +96,98 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   // Helper to save current state to history before a mutation
   // This follows the Excalidraw pattern of capturing state before changes
   
+  // Grouping actions
+  groupSelection: () => {
+    const { components, annotations, canvas, selectedComponentIds, selectedAnnotationId } = get();
+    const view = canvas.activeView;
+    const viewComponents = components[view];
+    const viewAnnotations = annotations[view];
+    
+    const groupId = generateId();
+    
+    // Collect all selected IDs
+    const idsToGroup = [...selectedComponentIds];
+    if (selectedAnnotationId) idsToGroup.push(selectedAnnotationId);
+    
+    if (idsToGroup.length < 2) return; // Need at least 2 items to group
+    
+    // Calculate max zIndex in the current view to bring group to front
+    let maxZ = 0;
+    viewComponents.forEach(c => maxZ = Math.max(maxZ, c.zIndex || 0));
+    viewAnnotations.forEach(a => maxZ = Math.max(maxZ, a.zIndex || 0));
+    
+    // Update components
+    const newComponents = viewComponents.map(c => {
+      if (idsToGroup.includes(c.id)) {
+        maxZ++;
+        return { ...c, groupId, zIndex: maxZ };
+      }
+      return c;
+    });
+    
+    // Update annotations
+    const newAnnotations = viewAnnotations.map(a => {
+      if (idsToGroup.includes(a.id)) {
+        maxZ++;
+        return { ...a, groupId, zIndex: maxZ };
+      }
+      return a;
+    });
+    
+    set({
+      components: { ...components, [view]: newComponents },
+      annotations: { ...annotations, [view]: newAnnotations },
+      history: {
+        past: [...get().history.past, { components, annotations }],
+        future: [],
+      },
+    });
+  },
+
+  ungroupSelection: () => {
+    const { components, annotations, canvas, selectedComponentIds, selectedAnnotationId } = get();
+    const view = canvas.activeView;
+    const viewComponents = components[view];
+    const viewAnnotations = annotations[view];
+    
+    // Collect all selected IDs
+    const selectedIds = [...selectedComponentIds];
+    if (selectedAnnotationId) selectedIds.push(selectedAnnotationId);
+    
+    if (selectedIds.length === 0) return;
+    
+    // Find group IDs involved in selection
+    const groupIds = new Set<string>();
+    
+    viewComponents.forEach(c => {
+      if (selectedIds.includes(c.id) && c.groupId) groupIds.add(c.groupId);
+    });
+    
+    viewAnnotations.forEach(a => {
+      if (selectedIds.includes(a.id) && a.groupId) groupIds.add(a.groupId);
+    });
+    
+    if (groupIds.size === 0) return;
+    
+    // Remove groupId from all items in these groups
+    const newComponents = viewComponents.map(c => 
+      (c.groupId && groupIds.has(c.groupId)) ? { ...c, groupId: undefined } : c
+    );
+    
+    const newAnnotations = viewAnnotations.map(a => 
+      (a.groupId && groupIds.has(a.groupId)) ? { ...a, groupId: undefined } : a
+    );
+    
+    set({
+      components: { ...components, [view]: newComponents },
+      annotations: { ...annotations, [view]: newAnnotations },
+      history: {
+        past: [...get().history.past, { components, annotations }],
+        future: [],
+      },
+    });
+  },
+
   // Component actions
   addComponent: (componentData) => {
     const id = generateId();
@@ -167,7 +259,26 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   selectComponent: (id) => {
-    set({ selectedComponentIds: id ? [id] : [], selectedAnnotationId: null });
+    const { components, canvas } = get();
+    const view = canvas.activeView;
+    
+    if (!id) {
+      set({ selectedComponentIds: [], selectedAnnotationId: null });
+      return;
+    }
+
+    // Check if part of a group
+    const component = components[view].find(c => c.id === id);
+    if (component?.groupId) {
+      // Select all items in group
+      const groupComponentIds = components[view]
+        .filter(c => c.groupId === component.groupId)
+        .map(c => c.id);
+        
+      set({ selectedComponentIds: groupComponentIds, selectedAnnotationId: null });
+    } else {
+      set({ selectedComponentIds: [id], selectedAnnotationId: null });
+    }
   },
 
   selectComponents: (ids) => {

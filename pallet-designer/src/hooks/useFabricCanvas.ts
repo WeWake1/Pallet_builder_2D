@@ -234,56 +234,140 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     // Increment canvas version to trigger re-sync of components and annotations
     setCanvasVersion(v => v + 1);
 
-    // Handle selection - support multi-selection
-    canvas.on('selection:created', (e) => {
+    // Handle selection - support multi-selection and grouping
+    const handleSelectionChange = (e: Partial<fabric.TEvent> & { selected?: fabric.FabricObject[] }) => {
       if (isUpdatingSelectionRef.current) return;
       
-      const selectedObjects = e.selected || [];
-      const componentIds: string[] = [];
-      let selectedAnnotationId: string | null = null;
-      
-      selectedObjects.forEach((obj) => {
-        const data = getObjectData(obj);
-        if (data?.id && !data.isGrid) {
-          if (data.isAnnotation) {
-            selectedAnnotationId = data.id;
-          } else {
-            componentIds.push(data.id);
-          }
-        }
-      });
-      
-      if (componentIds.length > 0) {
-        selectComponents(componentIds);
-      } else if (selectedAnnotationId) {
-        selectAnnotation(selectedAnnotationId);
-      }
-    });
+      const selected = e.selected || [];
+      if (selected.length === 0) return;
 
-    canvas.on('selection:updated', (e) => {
-      if (isUpdatingSelectionRef.current) return;
+      const { components, annotations, canvas: canvasState } = useStore.getState();
+      const view = canvasState.activeView;
       
-      const selectedObjects = e.selected || [];
-      const componentIds: string[] = [];
-      let selectedAnnotationId: string | null = null;
+      // Find all groups involved in the selection
+      const groupsToSelect = new Set<string>();
       
-      selectedObjects.forEach((obj) => {
+      selected.forEach((obj) => {
         const data = getObjectData(obj);
-        if (data?.id && !data.isGrid) {
-          if (data.isAnnotation) {
-            selectedAnnotationId = data.id;
-          } else {
-            componentIds.push(data.id);
+        if (!data?.id) return;
+        
+        let groupId: string | undefined;
+        if (data.isAnnotation) {
+           groupId = annotations[view].find(a => a.id === data.id)?.groupId;
+        } else {
+           groupId = components[view].find(c => c.id === data.id)?.groupId;
+        }
+        
+        if (groupId) groupsToSelect.add(groupId);
+      });
+      
+      // If no groups involved, just update store selection
+      if (groupsToSelect.size === 0) {
+        const componentIds: string[] = [];
+        let selectedAnnotationId: string | null = null;
+        
+        selected.forEach((obj) => {
+          const data = getObjectData(obj);
+          if (data?.id && !data.isGrid) {
+            if (data.isAnnotation) {
+              selectedAnnotationId = data.id;
+            } else {
+              componentIds.push(data.id);
+            }
+          }
+        });
+        
+        if (componentIds.length > 0) {
+          selectComponents(componentIds);
+        } else if (selectedAnnotationId) {
+          selectAnnotation(selectedAnnotationId);
+        }
+        return;
+      }
+      
+      // Find all objects that belong to these groups
+      // Start with currently selected objects
+      const objectsToSelect = new Set<fabric.FabricObject>(selected);
+      let addedNew = false;
+      
+      canvas.getObjects().forEach((obj) => {
+        const data = getObjectData(obj);
+        if (!data?.id) return;
+        
+        let groupId: string | undefined;
+        if (data.isAnnotation) {
+           groupId = annotations[view].find(a => a.id === data.id)?.groupId;
+        } else {
+           groupId = components[view].find(c => c.id === data.id)?.groupId;
+        }
+        
+        if (groupId && groupsToSelect.has(groupId)) {
+          if (!objectsToSelect.has(obj)) {
+            objectsToSelect.add(obj);
+            addedNew = true;
           }
         }
       });
       
-      if (componentIds.length > 0) {
-        selectComponents(componentIds);
-      } else if (selectedAnnotationId) {
-        selectAnnotation(selectedAnnotationId);
+      if (addedNew) {
+        // Update selection on canvas
+        isUpdatingSelectionRef.current = true; // Prevent loop
+        
+        // We must discard current active object before creating a new one to avoid conflicts
+        canvas.discardActiveObject();
+        
+        const newSelection = new fabric.ActiveSelection(Array.from(objectsToSelect), { canvas });
+        canvas.setActiveObject(newSelection);
+        canvas.renderAll();
+        
+        // Update store with new full selection
+        const componentIds: string[] = [];
+        let selectedAnnotationId: string | null = null;
+        
+        objectsToSelect.forEach((obj) => {
+          const data = getObjectData(obj);
+          if (data?.id && !data.isGrid) {
+            if (data.isAnnotation) {
+              selectedAnnotationId = data.id;
+            } else {
+              componentIds.push(data.id);
+            }
+          }
+        });
+        
+        if (componentIds.length > 0) {
+          selectComponents(componentIds);
+        } else if (selectedAnnotationId) {
+          selectAnnotation(selectedAnnotationId);
+        }
+        
+        isUpdatingSelectionRef.current = false;
+      } else {
+        // Just update store
+        const componentIds: string[] = [];
+        let selectedAnnotationId: string | null = null;
+        
+        selected.forEach((obj) => {
+          const data = getObjectData(obj);
+          if (data?.id && !data.isGrid) {
+            if (data.isAnnotation) {
+              selectedAnnotationId = data.id;
+            } else {
+              componentIds.push(data.id);
+            }
+          }
+        });
+        
+        if (componentIds.length > 0) {
+          selectComponents(componentIds);
+        } else if (selectedAnnotationId) {
+          selectAnnotation(selectedAnnotationId);
+        }
       }
-    });
+    };
+
+    canvas.on('selection:created', handleSelectionChange);
+    canvas.on('selection:updated', handleSelectionChange);
 
     canvas.on('selection:cleared', () => {
       if (isUpdatingSelectionRef.current) return;
@@ -386,9 +470,55 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
     // Handle object modification (drag, resize, rotate) - snap to grid at the end
     canvas.on('object:modified', (e) => {
-      const obj = e.target;
-      if (!obj) return;
+      const target = e.target;
+      if (!target) return;
+
+      // Handle ActiveSelection (multi-selection)
+      if (target.type === 'activeSelection' || target instanceof fabric.ActiveSelection) {
+        const activeSelection = target as fabric.ActiveSelection;
+        const objects = activeSelection.getObjects();
+        
+        objects.forEach((obj) => {
+          const data = getObjectData(obj);
+          if (!data?.id || data.isLabel || data.isGrid || data.isAnnotation) return;
+
+          // Calculate absolute coordinates
+          const matrix = obj.calcTransformMatrix();
+          const options = fabric.util.qrDecompose(matrix);
+          
+          // Calculate Top-Left from the matrix
+          // obj.width/height are unscaled dimensions
+          const topLeft = fabric.util.transformPoint(
+            new fabric.Point(-obj.width / 2, -obj.height / 2),
+            matrix
+          );
+
+          const newPosition = {
+            x: Math.round(topLeft.x / CANVAS_SCALE),
+            y: Math.round(topLeft.y / CANVAS_SCALE),
+          };
+          
+          // Dimensions
+          const isRect = obj instanceof fabric.Rect;
+          const finalWidth = obj.width * options.scaleX;
+          const finalHeight = obj.height * options.scaleY;
+
+          const newDimensions = isRect ? {
+            width: Math.round(finalWidth / CANVAS_SCALE),
+            length: Math.round(finalHeight / CANVAS_SCALE),
+            thickness: data.dimensions?.thickness || 22,
+          } : data.dimensions;
+
+          updateComponent(data.id, {
+            position: newPosition,
+            dimensions: newDimensions,
+            rotation: Math.round(options.angle),
+          });
+        });
+        return;
+      }
       
+      const obj = target;
       const data = getObjectData(obj);
       if (!data?.id || data.isLabel || data.isGrid) return;
       
@@ -676,25 +806,67 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           stroke: colors.stroke,
         });
         
-        // For rectangles, we can update width/height directly
-        // Objects use center origin, so position is center of object
-        if (isRect) {
-          existingObj.set({
-            left: component.position.x * CANVAS_SCALE + w / 2,
-            top: component.position.y * CANVAS_SCALE + h / 2,
-            width: w,
-            height: h,
-            angle: component.rotation,
-            scaleX: 1,
-            scaleY: 1,
-          });
+        // Calculate target absolute position (Center)
+        const targetLeft = component.position.x * CANVAS_SCALE + w / 2;
+        const targetTop = component.position.y * CANVAS_SCALE + h / 2;
+
+        // Check if we need to update position
+        // If object is in a group/selection, we must compare absolute coordinates
+        // to avoid breaking the group or causing jumps.
+        let shouldUpdatePosition = true;
+        
+        if (existingObj.group) {
+          const matrix = existingObj.calcTransformMatrix();
+          // Get absolute center
+          const currentCenter = fabric.util.transformPoint(
+            new fabric.Point(0, 0), // Center of object (local) is 0,0
+            matrix
+          );
+          
+          const dist = Math.sqrt(
+            Math.pow(currentCenter.x - targetLeft, 2) + 
+            Math.pow(currentCenter.y - targetTop, 2)
+          );
+          
+          // If position is very close (within 1px), skip update
+          if (dist < 1) {
+            shouldUpdatePosition = false;
+          } else {
+            // If we must update, we have to be careful with the group
+            // For now, deselecting is the safest way to ensure correct positioning
+            canvas.discardActiveObject();
+          }
         } else {
-          // For paths (centered at origin), position is center of object
-          existingObj.set({
-            left: component.position.x * CANVAS_SCALE + w / 2,
-            top: component.position.y * CANVAS_SCALE + h / 2,
-            angle: component.rotation,
-          });
+          // For non-grouped objects, check simple distance to avoid churn
+          const dist = Math.sqrt(
+            Math.pow((existingObj.left || 0) - targetLeft, 2) + 
+            Math.pow((existingObj.top || 0) - targetTop, 2)
+          );
+          if (dist < 1) shouldUpdatePosition = false;
+        }
+
+        if (shouldUpdatePosition) {
+          // For rectangles, we can update width/height directly
+          // Objects use center origin, so position is center of object
+          if (isRect) {
+            existingObj.set({
+              left: targetLeft,
+              top: targetTop,
+              width: w,
+              height: h,
+              angle: component.rotation,
+              scaleX: 1,
+              scaleY: 1,
+            });
+          } else {
+            // For paths (centered at origin), position is center of object
+            existingObj.set({
+              left: targetLeft,
+              top: targetTop,
+              angle: component.rotation,
+            });
+          }
+          existingObj.setCoords();
         }
         
         // Update the stored data
@@ -704,7 +876,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           dimensions: component.dimensions,
           zIndex: component.zIndex,
         });
-        existingObj.setCoords();
       } else {
         // Create new object using the shape factory
         const shape = createComponentShape(component, colors);
@@ -742,17 +913,37 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
     
-    // Temporarily disable selection events to prevent clearing selection during reordering
-    isUpdatingSelectionRef.current = true;
-
-    // Remove all component objects from canvas
-    componentObjects.forEach((obj) => canvas.remove(obj));
+    // Check if order is already correct to avoid destroying selection
+    const currentObjects = canvas.getObjects().filter(obj => {
+      const data = getObjectData(obj);
+      return data?.id && !data.isGrid && !data.isLabel && !data.isAnnotation;
+    });
     
-    // Re-add them in the correct order (store order)
-    componentObjects.forEach((obj) => canvas.add(obj));
+    let orderCorrect = true;
+    if (currentObjects.length !== componentObjects.length) {
+      orderCorrect = false;
+    } else {
+      for (let i = 0; i < currentObjects.length; i++) {
+        if (currentObjects[i] !== componentObjects[i]) {
+          orderCorrect = false;
+          break;
+        }
+      }
+    }
+    
+    if (!orderCorrect) {
+      // Temporarily disable selection events to prevent clearing selection during reordering
+      isUpdatingSelectionRef.current = true;
 
-    // Re-enable selection events
-    isUpdatingSelectionRef.current = false;
+      // Remove all component objects from canvas
+      componentObjects.forEach((obj) => canvas.remove(obj));
+      
+      // Re-add them in the correct order (store order)
+      componentObjects.forEach((obj) => canvas.add(obj));
+
+      // Re-enable selection events
+      isUpdatingSelectionRef.current = false;
+    }
 
     canvas.renderAll();
   }, []);

@@ -35,6 +35,7 @@ export interface PalletComponent {
   rotation: number; // degrees
   view: ViewType;
   zIndex?: number;
+  groupId?: string;
   label?: string;
   color?: {
     fill: string;
@@ -54,6 +55,7 @@ export interface TextAnnotation {
   rotation: number;
   view: ViewType;
   zIndex?: number;
+  groupId?: string;
 }
 
 // Dimension line annotation
@@ -66,6 +68,7 @@ export interface DimensionAnnotation {
   showValue: boolean;
   view: ViewType;
   zIndex?: number;
+  groupId?: string;
 }
 
 // Callout annotation (text with leader line)
@@ -77,6 +80,7 @@ export interface CalloutAnnotation {
   textPosition: Position; // where the text bubble is
   view: ViewType;
   zIndex?: number;
+  groupId?: string;
 }
 
 // Union type for all annotations
@@ -214,6 +218,8 @@ export interface AppActions {
   duplicateComponent: (id: string) => void;
   copyComponent: (id: string) => void;
   pasteComponent: () => void;
+  groupSelection: () => void;
+  ungroupSelection: () => void;
   
   // Annotation actions
   addAnnotation: (annotation: NewAnnotation) => void;

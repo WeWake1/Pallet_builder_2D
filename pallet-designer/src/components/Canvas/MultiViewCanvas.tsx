@@ -15,46 +15,17 @@ const RULER_SIZE = 24; // Must match WorkspaceRuler
 function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: boolean; onClick: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.StaticCanvas | null>(null);
-  const { components, canvas: canvasState } = useStore();
-  const viewComponents = components[view];
-  const isDarkMode = canvasState.darkMode;
+  
+  // Use selectors to avoid unnecessary re-renders
+  const viewComponents = useStore((state) => state.components[view]);
+  const isDarkMode = useStore((state) => state.canvas.darkMode);
 
-  // Initialize static canvas
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    const canvas = new fabric.StaticCanvas(canvasRef.current, {
-      width: A4_WIDTH_PX,
-      height: A4_HEIGHT_PX,
-      backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
-    });
-
-    fabricRef.current = canvas;
-
-    return () => {
-      canvas.dispose();
-      fabricRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Update background on dark mode change
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    canvas.backgroundColor = isDarkMode ? '#1e293b' : '#ffffff';
-    canvas.renderAll();
-  }, [isDarkMode]);
-
-  // Render components
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-
+  // Helper to render canvas content
+  const renderCanvas = useCallback((canvas: fabric.StaticCanvas, components: typeof viewComponents, darkMode: boolean) => {
     canvas.clear();
-    canvas.backgroundColor = isDarkMode ? '#1e293b' : '#ffffff';
+    canvas.backgroundColor = darkMode ? '#1e293b' : '#ffffff';
 
-    viewComponents.forEach((comp) => {
+    components.forEach((comp) => {
       const colors = COMPONENT_COLORS[comp.type] || { fill: '#cccccc', stroke: '#999999' };
       const w = comp.dimensions.width * CANVAS_SCALE;
       const h = comp.dimensions.length * CANVAS_SCALE;
@@ -76,7 +47,42 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
     });
 
     canvas.renderAll();
-  }, [viewComponents, isDarkMode]);
+  }, []);
+
+  // Initialize static canvas
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    // Dispose existing if any
+    if (fabricRef.current) {
+      fabricRef.current.dispose();
+    }
+
+    const canvas = new fabric.StaticCanvas(canvasRef.current, {
+      width: A4_WIDTH_PX,
+      height: A4_HEIGHT_PX,
+      backgroundColor: isDarkMode ? '#1e293b' : '#ffffff',
+      renderOnAddRemove: false
+    });
+
+    fabricRef.current = canvas;
+    
+    // Initial render
+    renderCanvas(canvas, viewComponents, isDarkMode);
+
+    return () => {
+      canvas.dispose();
+      fabricRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Update content when dependencies change
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    renderCanvas(canvas, viewComponents, isDarkMode);
+  }, [viewComponents, isDarkMode, renderCanvas]);
 
   const scale = 0.12; // Small preview scale
 
@@ -203,7 +209,9 @@ export function MultiViewCanvas() {
         bringForward,
         sendBackward,
         bringToFront,
-        sendToBack
+        sendToBack,
+        groupSelection,
+        ungroupSelection
       } = useStore.getState();
       
       // Undo: Ctrl/Cmd + Z
@@ -217,6 +225,20 @@ export function MultiViewCanvas() {
       if ((e.ctrlKey || e.metaKey) && ((e.key === 'z' && e.shiftKey) || e.key === 'y')) {
         e.preventDefault();
         redo();
+        return;
+      }
+      
+      // Group: Ctrl/Cmd + G
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && !e.shiftKey) {
+        e.preventDefault();
+        groupSelection();
+        return;
+      }
+
+      // Ungroup: Ctrl/Cmd + Shift + G
+      if ((e.ctrlKey || e.metaKey) && e.key === 'g' && e.shiftKey) {
+        e.preventDefault();
+        ungroupSelection();
         return;
       }
       

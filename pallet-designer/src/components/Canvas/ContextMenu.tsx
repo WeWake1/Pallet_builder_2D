@@ -27,7 +27,22 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     sendAnnotationBackward,
     copyAnnotation,
     duplicateAnnotation,
+    groupSelection,
+    ungroupSelection,
+    selectedComponentIds,
+    components,
+    canvas
   } = useStore();
+
+  const activeView = canvas.activeView;
+  const viewComponents = components[activeView];
+  
+  // Check if we can group/ungroup
+  const canGroup = selectedComponentIds.length > 1;
+  const canUngroup = selectedComponentIds.length > 0 && selectedComponentIds.some(id => {
+    const comp = viewComponents.find(c => c.id === id);
+    return !!comp?.groupId;
+  });
 
   // Close on click outside
   useEffect(() => {
@@ -154,6 +169,42 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
                 </span>
                 <span className="text-xs text-[var(--color-text-muted)]">⌘C</span>
               </button>
+
+              {canGroup && (
+                <button
+                  onClick={() => {
+                    groupSelection();
+                    onClose();
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                    Group
+                  </span>
+                  <span className="text-xs text-[var(--color-text-muted)]">⌘G</span>
+                </button>
+              )}
+
+              {canUngroup && (
+                <button
+                  onClick={() => {
+                    ungroupSelection();
+                    onClose();
+                  }}
+                  className="w-full px-3 py-2 text-left text-sm text-[var(--color-text)] hover:bg-[var(--color-surface-hover)] flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                    Ungroup
+                  </span>
+                  <span className="text-xs text-[var(--color-text-muted)]">⇧⌘G</span>
+                </button>
+              )}
 
               <button
                 onClick={handleDuplicate}
