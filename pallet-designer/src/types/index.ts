@@ -34,6 +34,7 @@ export interface PalletComponent {
   position: Position;
   rotation: number; // degrees
   view: ViewType;
+  zIndex?: number;
   label?: string;
   color?: {
     fill: string;
@@ -52,6 +53,7 @@ export interface TextAnnotation {
   color: string;
   rotation: number;
   view: ViewType;
+  zIndex?: number;
 }
 
 // Dimension line annotation
@@ -63,6 +65,7 @@ export interface DimensionAnnotation {
   value: number; // in mm
   showValue: boolean;
   view: ViewType;
+  zIndex?: number;
 }
 
 // Callout annotation (text with leader line)
@@ -73,6 +76,7 @@ export interface CalloutAnnotation {
   anchorPosition: Position; // point on the component
   textPosition: Position; // where the text bubble is
   view: ViewType;
+  zIndex?: number;
 }
 
 // Union type for all annotations

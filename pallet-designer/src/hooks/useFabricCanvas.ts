@@ -24,6 +24,7 @@ interface ComponentData {
   isLabel?: boolean;
   isAnnotation?: boolean;
   annotationType?: string;
+  zIndex?: number;
 }
 
 // Helper to get custom data from fabric object
@@ -701,6 +702,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           id: component.id,
           type: component.type,
           dimensions: component.dimensions,
+          zIndex: component.zIndex,
         });
         existingObj.setCoords();
       } else {
@@ -711,6 +713,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           id: component.id,
           type: component.type,
           dimensions: component.dimensions,
+          zIndex: component.zIndex,
         });
         
         canvas.add(shape);
@@ -1116,6 +1119,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           hasBorders: true,
         });
         
+        // Update zIndex in data
+        const currentData = getObjectData(existingObj);
+        if (currentData) {
+          setObjectData(existingObj, { ...currentData, zIndex: annotation.zIndex });
+        }
+
         if (annotation.type === 'text') {
           // Auto-switch black text to white in dark mode
           const isBlackish = (c: string) => ['#000000', '#000', 'black', '#333333', '#1f2937'].includes(c?.toLowerCase());
@@ -1182,6 +1191,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             type: annotation.type,
             isAnnotation: true,
             annotationType: annotation.type,
+            zIndex: annotation.zIndex,
           });
           
           canvas.add(annotationObj);
@@ -1244,46 +1254,35 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     syncAnnotations(viewAnnotations);
     
     // Ensure proper z-ordering: grid at back
-    // Build a deterministic stack order:
-    //   1) grid (back)
-    //   2) components in store order
-    //   3) annotations in store order
-    // This makes annotation layer ordering work relative to components too.
+    // Build a deterministic stack order based on zIndex
     const objects = canvas.getObjects();
 
     const gridObjs = objects.filter((o) => getObjectData(o)?.isGrid);
-    const componentObjs: fabric.FabricObject[] = [];
-    const annotationObjs: fabric.FabricObject[] = [];
-
-    viewComponents.forEach((c) => {
-      const obj = objects.find((o) => {
-        const d = getObjectData(o);
-        return d?.id === c.id && !d.isGrid && !d.isLabel && !d.isAnnotation;
-      });
-      if (obj) componentObjs.push(obj);
+    
+    // Collect all content objects (components + annotations)
+    const contentObjs = objects.filter((o) => {
+      const d = getObjectData(o);
+      return d && !d.isGrid && !d.isLabel;
     });
 
-    viewAnnotations.forEach((a) => {
-      const obj = objects.find((o) => {
-        const d = getObjectData(o);
-        return d?.id === a.id && d.isAnnotation;
-      });
-      if (obj) annotationObjs.push(obj);
+    // Sort by zIndex
+    contentObjs.sort((a, b) => {
+      const zA = getObjectData(a)?.zIndex || 0;
+      const zB = getObjectData(b)?.zIndex || 0;
+      return zA - zB;
     });
 
     console.log('[useFabricCanvas] Reordering canvas stack', {
       gridCount: gridObjs.length,
-      componentCount: componentObjs.length,
-      annotationCount: annotationObjs.length,
-      componentIds: componentObjs.map(o => getObjectData(o)?.id),
-      annotationIds: annotationObjs.map(o => getObjectData(o)?.id),
+      contentCount: contentObjs.length,
+      order: contentObjs.map(o => ({ id: getObjectData(o)?.id, z: getObjectData(o)?.zIndex }))
     });
 
     isUpdatingSelectionRef.current = true;
     // Remove and re-add in our desired order.
     // Keep grid objects first so they remain at the back.
-    [...gridObjs, ...componentObjs, ...annotationObjs].forEach((o) => canvas.remove(o));
-    [...gridObjs, ...componentObjs, ...annotationObjs].forEach((o) => canvas.add(o));
+    [...gridObjs, ...contentObjs].forEach((o) => canvas.remove(o));
+    [...gridObjs, ...contentObjs].forEach((o) => canvas.add(o));
     isUpdatingSelectionRef.current = false;
 
     // Restore selection state after sync

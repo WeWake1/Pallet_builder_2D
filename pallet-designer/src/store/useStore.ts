@@ -99,9 +99,15 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   // Component actions
   addComponent: (componentData) => {
     const id = generateId();
-    const component: PalletComponent = { ...componentData, id };
     const { canvas, components, annotations } = get();
     const view = canvas.activeView;
+    
+    // Calculate max zIndex
+    let maxZ = 0;
+    components[view].forEach(c => maxZ = Math.max(maxZ, c.zIndex || 0));
+    annotations[view].forEach(a => maxZ = Math.max(maxZ, a.zIndex || 0));
+
+    const component: PalletComponent = { ...componentData, id, zIndex: maxZ + 1 };
     
     // Save current state to history before mutation
     set((state) => ({
@@ -311,9 +317,15 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   // Annotation actions
   addAnnotation: (annotationData) => {
     const id = generateId();
-    const annotation = { ...annotationData, id };
     const { canvas, components, annotations } = get();
     const view = canvas.activeView;
+
+    // Calculate max zIndex
+    let maxZ = 0;
+    components[view].forEach(c => maxZ = Math.max(maxZ, c.zIndex || 0));
+    annotations[view].forEach(a => maxZ = Math.max(maxZ, a.zIndex || 0));
+
+    const annotation = { ...annotationData, id, zIndex: maxZ + 1 };
     
     // Save current state to history before mutation
     set((state) => ({
@@ -575,219 +587,174 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   // Layer ordering actions (inspired by Excalidraw)
+  // Layer ordering actions (unified)
   bringToFront: (id) => {
-    const { components, canvas } = get();
+    const { components, annotations, canvas } = get();
     const view = canvas.activeView;
     const viewComponents = components[view];
-    const index = viewComponents.findIndex((c) => c.id === id);
+    const viewAnnotations = annotations[view];
     
-    if (index === -1 || index === viewComponents.length - 1) return;
+    // Find max zIndex
+    let maxZ = 0;
+    viewComponents.forEach(c => maxZ = Math.max(maxZ, c.zIndex || 0));
+    viewAnnotations.forEach(a => maxZ = Math.max(maxZ, a.zIndex || 0));
     
-    const component = viewComponents[index];
-    const newComponents = [
-      ...viewComponents.slice(0, index),
-      ...viewComponents.slice(index + 1),
-      component,
-    ];
+    // Check if it's a component
+    const compIndex = viewComponents.findIndex(c => c.id === id);
+    if (compIndex !== -1) {
+        const newComponents = [...viewComponents];
+        newComponents[compIndex] = { ...newComponents[compIndex], zIndex: maxZ + 1 };
+        set({ components: { ...components, [view]: newComponents } });
+        return;
+    }
     
-    set({
-      components: { ...components, [view]: newComponents },
-    });
+    // Check if it's an annotation
+    const annIndex = viewAnnotations.findIndex(a => a.id === id);
+    if (annIndex !== -1) {
+        const newAnnotations = [...viewAnnotations];
+        newAnnotations[annIndex] = { ...newAnnotations[annIndex], zIndex: maxZ + 1 };
+        set({ annotations: { ...annotations, [view]: newAnnotations } });
+        return;
+    }
   },
 
   bringForward: (id) => {
-    const { components, canvas } = get();
+    const { components, annotations, canvas } = get();
     const view = canvas.activeView;
     const viewComponents = components[view];
-    const index = viewComponents.findIndex((c) => c.id === id);
+    const viewAnnotations = annotations[view];
     
-    if (index === -1 || index === viewComponents.length - 1) return;
+    // Collect all objects with zIndex
+    const allObjects = [
+      ...viewComponents.map(c => ({ id: c.id, zIndex: c.zIndex || 0, type: 'component' })),
+      ...viewAnnotations.map(a => ({ id: a.id, zIndex: a.zIndex || 0, type: 'annotation' }))
+    ].sort((a, b) => a.zIndex - b.zIndex);
     
-    const newComponents = [...viewComponents];
-    // Swap with next element
-    [newComponents[index], newComponents[index + 1]] = [newComponents[index + 1], newComponents[index]];
+    const currentIndex = allObjects.findIndex(o => o.id === id);
+    if (currentIndex === -1 || currentIndex === allObjects.length - 1) return;
     
-    set({
-      components: { ...components, [view]: newComponents },
-    });
+    const currentObj = allObjects[currentIndex];
+    const nextObj = allObjects[currentIndex + 1];
+    
+    // Swap zIndices
+    // If they have the same zIndex, increment current to be above
+    const newZ = currentObj.zIndex === nextObj.zIndex ? currentObj.zIndex + 1 : nextObj.zIndex;
+    const nextNewZ = currentObj.zIndex; // Swap
+    
+    // Update current object
+    if (currentObj.type === 'component') {
+      const idx = viewComponents.findIndex(c => c.id === id);
+      const newComponents = [...viewComponents];
+      newComponents[idx] = { ...newComponents[idx], zIndex: newZ };
+      set({ components: { ...components, [view]: newComponents } });
+    } else {
+      const idx = viewAnnotations.findIndex(a => a.id === id);
+      const newAnnotations = [...viewAnnotations];
+      newAnnotations[idx] = { ...newAnnotations[idx], zIndex: newZ };
+      set({ annotations: { ...annotations, [view]: newAnnotations } });
+    }
+    
+    // Update next object (swap)
+    // We need to fetch fresh state because we might have just updated it
+    const freshState = get();
+    if (nextObj.type === 'component') {
+      const idx = freshState.components[view].findIndex(c => c.id === nextObj.id);
+      const newComponents = [...freshState.components[view]];
+      newComponents[idx] = { ...newComponents[idx], zIndex: nextNewZ };
+      set({ components: { ...freshState.components, [view]: newComponents } });
+    } else {
+      const idx = freshState.annotations[view].findIndex(a => a.id === nextObj.id);
+      const newAnnotations = [...freshState.annotations[view]];
+      newAnnotations[idx] = { ...newAnnotations[idx], zIndex: nextNewZ };
+      set({ annotations: { ...freshState.annotations, [view]: newAnnotations } });
+    }
   },
 
   sendToBack: (id) => {
-    const { components, canvas } = get();
+    const { components, annotations, canvas } = get();
     const view = canvas.activeView;
     const viewComponents = components[view];
-    const index = viewComponents.findIndex((c) => c.id === id);
+    const viewAnnotations = annotations[view];
     
-    if (index <= 0) return;
+    // Find min zIndex
+    let minZ = 0;
+    viewComponents.forEach(c => minZ = Math.min(minZ, c.zIndex || 0));
+    viewAnnotations.forEach(a => minZ = Math.min(minZ, a.zIndex || 0));
     
-    const component = viewComponents[index];
-    const newComponents = [
-      component,
-      ...viewComponents.slice(0, index),
-      ...viewComponents.slice(index + 1),
-    ];
+    // Check if it's a component
+    const compIndex = viewComponents.findIndex(c => c.id === id);
+    if (compIndex !== -1) {
+        const newComponents = [...viewComponents];
+        newComponents[compIndex] = { ...newComponents[compIndex], zIndex: minZ - 1 };
+        set({ components: { ...components, [view]: newComponents } });
+        return;
+    }
     
-    set({
-      components: { ...components, [view]: newComponents },
-    });
+    // Check if it's an annotation
+    const annIndex = viewAnnotations.findIndex(a => a.id === id);
+    if (annIndex !== -1) {
+        const newAnnotations = [...viewAnnotations];
+        newAnnotations[annIndex] = { ...newAnnotations[annIndex], zIndex: minZ - 1 };
+        set({ annotations: { ...annotations, [view]: newAnnotations } });
+        return;
+    }
   },
 
   sendBackward: (id) => {
-    const { components, canvas } = get();
+    const { components, annotations, canvas } = get();
     const view = canvas.activeView;
     const viewComponents = components[view];
-    const index = viewComponents.findIndex((c) => c.id === id);
-    
-    if (index <= 0) return;
-    
-    const newComponents = [...viewComponents];
-    // Swap with previous element
-    [newComponents[index - 1], newComponents[index]] = [newComponents[index], newComponents[index - 1]];
-    
-    set({
-      components: { ...components, [view]: newComponents },
-    });
-  },
-
-  // Annotation Layer ordering actions
-  bringAnnotationToFront: (id) => {
-    console.log('[Store] bringAnnotationToFront called', { id });
-    const { annotations, canvas } = get();
-    const view = canvas.activeView;
     const viewAnnotations = annotations[view];
-    const index = viewAnnotations.findIndex((a) => a.id === id);
     
-    console.log('[Store] bringAnnotationToFront', { 
-      id, 
-      index, 
-      totalAnnotations: viewAnnotations.length,
-      annotationIds: viewAnnotations.map(a => a.id),
-      willExit: index === -1 || index === viewAnnotations.length - 1
-    });
+    // Collect all objects with zIndex
+    const allObjects = [
+      ...viewComponents.map(c => ({ id: c.id, zIndex: c.zIndex || 0, type: 'component' })),
+      ...viewAnnotations.map(a => ({ id: a.id, zIndex: a.zIndex || 0, type: 'annotation' }))
+    ].sort((a, b) => a.zIndex - b.zIndex);
     
-    if (index === -1 || index === viewAnnotations.length - 1) {
-      console.log('[Store] bringAnnotationToFront - exiting early (already at front or not found)');
-      return;
+    const currentIndex = allObjects.findIndex(o => o.id === id);
+    if (currentIndex <= 0) return;
+    
+    const currentObj = allObjects[currentIndex];
+    const prevObj = allObjects[currentIndex - 1];
+    
+    // Swap zIndices
+    const newZ = prevObj.zIndex;
+    const prevNewZ = currentObj.zIndex === prevObj.zIndex ? currentObj.zIndex + 1 : currentObj.zIndex;
+    
+    // Update current object
+    if (currentObj.type === 'component') {
+      const idx = viewComponents.findIndex(c => c.id === id);
+      const newComponents = [...viewComponents];
+      newComponents[idx] = { ...newComponents[idx], zIndex: newZ };
+      set({ components: { ...components, [view]: newComponents } });
+    } else {
+      const idx = viewAnnotations.findIndex(a => a.id === id);
+      const newAnnotations = [...viewAnnotations];
+      newAnnotations[idx] = { ...newAnnotations[idx], zIndex: newZ };
+      set({ annotations: { ...annotations, [view]: newAnnotations } });
     }
     
-    const annotation = viewAnnotations[index];
-    const newAnnotations = [
-      ...viewAnnotations.slice(0, index),
-      ...viewAnnotations.slice(index + 1),
-      annotation,
-    ];
-    
-    console.log('[Store] bringAnnotationToFront setting new order', {
-      oldIds: viewAnnotations.map(a => a.id),
-      newIds: newAnnotations.map(a => a.id),
-    });
-    
-    set({
-      annotations: { ...annotations, [view]: newAnnotations },
-    });
+    // Update prev object (swap)
+    const freshState = get();
+    if (prevObj.type === 'component') {
+      const idx = freshState.components[view].findIndex(c => c.id === prevObj.id);
+      const newComponents = [...freshState.components[view]];
+      newComponents[idx] = { ...newComponents[idx], zIndex: prevNewZ };
+      set({ components: { ...freshState.components, [view]: newComponents } });
+    } else {
+      const idx = freshState.annotations[view].findIndex(a => a.id === prevObj.id);
+      const newAnnotations = [...freshState.annotations[view]];
+      newAnnotations[idx] = { ...newAnnotations[idx], zIndex: prevNewZ };
+      set({ annotations: { ...freshState.annotations, [view]: newAnnotations } });
+    }
   },
 
-  bringAnnotationForward: (id) => {
-    console.log('[Store] bringAnnotationForward called', { id });
-    const { annotations, canvas } = get();
-    const view = canvas.activeView;
-    const viewAnnotations = annotations[view];
-    const index = viewAnnotations.findIndex((a) => a.id === id);
-    
-    console.log('[Store] bringAnnotationForward', { 
-      id, 
-      index, 
-      totalAnnotations: viewAnnotations.length,
-      willExit: index === -1 || index === viewAnnotations.length - 1
-    });
-    
-    if (index === -1 || index === viewAnnotations.length - 1) {
-      console.log('[Store] bringAnnotationForward - exiting early (already at front or not found)');
-      return;
-    }
-    
-    const newAnnotations = [...viewAnnotations];
-    // Swap with next element
-    [newAnnotations[index], newAnnotations[index + 1]] = [newAnnotations[index + 1], newAnnotations[index]];
-    
-    console.log('[Store] bringAnnotationForward setting new order', {
-      oldIds: viewAnnotations.map(a => a.id),
-      newIds: newAnnotations.map(a => a.id),
-    });
-    
-    set({
-      annotations: { ...annotations, [view]: newAnnotations },
-    });
-  },
-
-  sendAnnotationToBack: (id) => {
-    console.log('[Store] sendAnnotationToBack called', { id });
-    const { annotations, canvas } = get();
-    const view = canvas.activeView;
-    const viewAnnotations = annotations[view];
-    const index = viewAnnotations.findIndex((a) => a.id === id);
-    
-    console.log('[Store] sendAnnotationToBack', { 
-      id, 
-      index, 
-      totalAnnotations: viewAnnotations.length,
-      willExit: index <= 0
-    });
-    
-    if (index <= 0) {
-      console.log('[Store] sendAnnotationToBack - exiting early (already at back or not found)');
-      return;
-    }
-    
-    const annotation = viewAnnotations[index];
-    const newAnnotations = [
-      annotation,
-      ...viewAnnotations.slice(0, index),
-      ...viewAnnotations.slice(index + 1),
-    ];
-    
-    console.log('[Store] sendAnnotationToBack setting new order', {
-      oldIds: viewAnnotations.map(a => a.id),
-      newIds: newAnnotations.map(a => a.id),
-    });
-    
-    set({
-      annotations: { ...annotations, [view]: newAnnotations },
-    });
-  },
-
-  sendAnnotationBackward: (id) => {
-    console.log('[Store] sendAnnotationBackward called', { id });
-    const { annotations, canvas } = get();
-    const view = canvas.activeView;
-    const viewAnnotations = annotations[view];
-    const index = viewAnnotations.findIndex((a) => a.id === id);
-    
-    console.log('[Store] sendAnnotationBackward', { 
-      id, 
-      index, 
-      totalAnnotations: viewAnnotations.length,
-      willExit: index <= 0
-    });
-    
-    if (index <= 0) {
-      console.log('[Store] sendAnnotationBackward - exiting early (already at back or not found)');
-      return;
-    }
-    
-    const newAnnotations = [...viewAnnotations];
-    // Swap with previous element
-    [newAnnotations[index - 1], newAnnotations[index]] = [newAnnotations[index], newAnnotations[index - 1]];
-    
-    console.log('[Store] sendAnnotationBackward setting new order', {
-      oldIds: viewAnnotations.map(a => a.id),
-      newIds: newAnnotations.map(a => a.id),
-    });
-    
-    set({
-      annotations: { ...annotations, [view]: newAnnotations },
-    });
-  },
+  // Annotation Layer ordering actions - mapped to unified actions
+  bringAnnotationToFront: (id) => get().bringToFront(id),
+  bringAnnotationForward: (id) => get().bringForward(id),
+  sendAnnotationToBack: (id) => get().sendToBack(id),
+  sendAnnotationBackward: (id) => get().sendBackward(id),
 
   // Reset
   resetCanvas: () => {
