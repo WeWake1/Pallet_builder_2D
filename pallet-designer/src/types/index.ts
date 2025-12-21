@@ -186,6 +186,9 @@ export interface AppState {
   
   // Clipboard for copy/paste
   clipboard: PalletComponent | null;
+
+  // Clipboard for annotation copy/duplicate
+  annotationClipboard: Annotation | null;
   
   // History for undo/redo - stores both components and annotations
   history: {
@@ -213,6 +216,9 @@ export interface AppActions {
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void;
   deleteAnnotation: (id: string) => void;
   selectAnnotation: (id: string | null) => void;
+
+  copyAnnotation: (id: string) => void;
+  duplicateAnnotation: (id: string) => void;
   
   // View actions
   setActiveView: (view: ViewType) => void;

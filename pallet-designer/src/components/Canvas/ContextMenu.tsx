@@ -25,6 +25,8 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     bringAnnotationForward,
     sendAnnotationToBack,
     sendAnnotationBackward,
+    copyAnnotation,
+    duplicateAnnotation,
   } = useStore();
 
   // Close on click outside
@@ -54,6 +56,9 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     if (componentId) {
       copyComponent(componentId);
     }
+    if (annotationId) {
+      copyAnnotation(annotationId);
+    }
     onClose();
   };
 
@@ -65,6 +70,9 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
   const handleDuplicate = () => {
     if (componentId) {
       duplicateComponent(componentId);
+    }
+    if (annotationId) {
+      duplicateAnnotation(annotationId);
     }
     onClose();
   };
@@ -131,8 +139,8 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
     >
       {(componentId || annotationId) ? (
         <>
-          {/* Edit actions - for components only (copy, duplicate) */}
-          {componentId && (
+          {/* Edit actions (copy, duplicate) */}
+          {(componentId || annotationId) && (
             <>
               <button
                 onClick={handleCopy}

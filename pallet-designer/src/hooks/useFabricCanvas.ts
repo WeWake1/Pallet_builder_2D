@@ -201,7 +201,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     const canvas = new fabric.Canvas(canvasRef.current, {
       width,
       height,
-      backgroundColor: '#ffffff',
+      // Set correct initial background to avoid a white/black flash until effects run
+      backgroundColor: canvasState.darkMode ? '#1e293b' : '#ffffff',
       selection: true,
       preserveObjectStacking: true,
       // Subtle selection box styling
@@ -289,6 +290,27 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       selectAnnotation(null);
     });
 
+    // Handle clicking on empty canvas to deselect
+    canvas.on('mouse:down', (e) => {
+      // If clicking on empty canvas (no target), clear selection
+      if (!e.target) {
+        canvas.discardActiveObject();
+        canvas.renderAll();
+        return;
+      }
+      
+      const data = getObjectData(e.target);
+      // Only capture history for real objects (not grid, labels)
+      if (data?.id && !data.isGrid && !data.isLabel) {
+        isDraggingRef.current = true;
+        captureHistoryRef.current();
+      }
+    });
+
+    canvas.on('mouse:up', () => {
+      isDraggingRef.current = false;
+    });
+
     // Handle object rotation - snap to 15 degree increments (like Excalidraw)
     // Snap only when shift is NOT held (shift allows free rotation)
     const ROTATION_SNAP_ANGLE = 15; // degrees
@@ -308,23 +330,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const currentAngle = obj.angle || 0;
       const snappedAngle = Math.round(currentAngle / ROTATION_SNAP_ANGLE) * ROTATION_SNAP_ANGLE;
       obj.set({ angle: snappedAngle % 360 });
-    });
-
-    // Capture history when user starts interacting with an object
-    // This ensures we save state BEFORE the modification, like Excalidraw
-    canvas.on('mouse:down', (e) => {
-      if (e.target) {
-        const data = getObjectData(e.target);
-        // Only capture history for real objects (not grid, labels)
-        if (data?.id && !data.isGrid && !data.isLabel) {
-          isDraggingRef.current = true;
-          captureHistoryRef.current();
-        }
-      }
-    });
-
-    canvas.on('mouse:up', () => {
-      isDraggingRef.current = false;
     });
 
     // Handle object moving - snap to grid when enabled
@@ -504,7 +509,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       globalFabricCanvas = null; // Clear global reference
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canvasRef.current]);
+  }, [canvasRef.current, canvasState.darkMode]);
 
   // Update canvas size
   useEffect(() => {
@@ -630,7 +635,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, width, height, canvasVersion]);
 
   // Update canvas background for dark mode
-  // Also trigger on canvasVersion to ensure correct colors after tab switch
   useEffect(() => {
     if (!fabricRef.current) return;
     const canvas = fabricRef.current;
@@ -900,7 +904,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const annotationId = annotation.id;
       
       // Create the group centered at midpoint
-      // Disable scaling controls - we don't want the dimension value to change on scale
       const group = new fabric.Group([leftLine, rightLine, cap1, cap2, text], {
         left: midX,
         top: midY,
@@ -912,32 +915,73 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         evented: true,
         hasControls: true,
         hasBorders: true,
-        lockScalingX: true,
-        lockScalingY: true,
+        lockScalingFlip: true,
       });
       
-      // Handle modification complete - save position to store (no scaling)
+      // Handle scaling - keep text readable and update displayed length while dragging
+      group.on('scaling', () => {
+        const scaleX = group.scaleX || 1;
+
+        const newLength = lineLength * scaleX;
+        const newValueMm = Math.round(newLength / CANVAS_SCALE);
+
+        const textObj = group.getObjects().find((o) => o instanceof fabric.IText);
+        if (textObj && textObj instanceof fabric.IText) {
+          textObj.set({ text: `${newValueMm}mm` });
+        }
+      });
+      
+      // Handle modification complete - save to store
       group.on('modified', () => {
+        const scaleX = group.scaleX || 1;
         const groupAngle = group.angle || 0;
         const groupAngleRad = (groupAngle * Math.PI) / 180;
-        
+
+        // Compute new geometry (persist stretch)
+        const newLength = lineLength * scaleX;
         const groupLeft = group.left || 0;
         const groupTop = group.top || 0;
-        const halfLen = lineLength / 2;
-        
-        const dx = Math.cos(groupAngleRad) * halfLen;
-        const dy = Math.sin(groupAngleRad) * halfLen;
-        
-        // Only update positions, never touch the value
+        const halfNewLength = newLength / 2;
+        const dx = Math.cos(groupAngleRad) * halfNewLength;
+        const dy = Math.sin(groupAngleRad) * halfNewLength;
+
+        const newStartPx = { x: groupLeft - dx, y: groupTop - dy };
+        const newEndPx = { x: groupLeft + dx, y: groupTop + dy };
+
+        // Update the group visuals so resetting scale does not snap back.
+        const newHalfLength = newLength / 2;
+        const textContent = `${Math.round(newLength / CANVAS_SCALE)}mm`;
+        const textWidth = textContent.length * 10;
+        const gapWidth = textWidth + 20;
+        const halfGap = gapWidth / 2;
+
+        const objs = group.getObjects();
+        const leftSeg = objs[0] as fabric.Line;
+        const rightSeg = objs[1] as fabric.Line;
+        const capA = objs[2] as fabric.Line;
+        const capB = objs[3] as fabric.Line;
+        const textObj = objs[4] as fabric.IText;
+
+        leftSeg.set({ x1: -newHalfLength, y1: 0, x2: -halfGap, y2: 0 });
+        rightSeg.set({ x1: halfGap, y1: 0, x2: newHalfLength, y2: 0 });
+        capA.set({ x1: -newHalfLength, y1: -capSize, x2: -newHalfLength, y2: capSize });
+        capB.set({ x1: newHalfLength, y1: -capSize, x2: newHalfLength, y2: capSize });
+        textObj.set({ text: textContent, left: 0, top: 0 });
+
+        group.set({ scaleX: 1, scaleY: 1 });
+        group.setCoords();
+
+        // Persist to store in mm coordinates
         updateAnnotationRef.current(annotationId, {
           startPosition: {
-            x: Math.round((groupLeft - dx) / CANVAS_SCALE),
-            y: Math.round((groupTop - dy) / CANVAS_SCALE),
+            x: Math.round(newStartPx.x / CANVAS_SCALE),
+            y: Math.round(newStartPx.y / CANVAS_SCALE),
           },
           endPosition: {
-            x: Math.round((groupLeft + dx) / CANVAS_SCALE),
-            y: Math.round((groupTop + dy) / CANVAS_SCALE),
+            x: Math.round(newEndPx.x / CANVAS_SCALE),
+            y: Math.round(newEndPx.y / CANVAS_SCALE),
           },
+          // keep value stable unless user explicitly edits it elsewhere
         });
       });
       
@@ -952,16 +996,13 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Create a movable group for the callout
       // The group contains: anchor circle, leader line, and text
       
-      // Dark mode color handling for callout
-      const calloutColor = canvasState.darkMode ? '#ffffff' : '#333333';
-      
       // Circle at anchor point (relative to group origin)
       const circle = new fabric.Circle({
         left: 0,
         top: 0,
         radius: 5,
         fill: '#ff6b6b',
-        stroke: calloutColor,
+        stroke: '#333333',
         strokeWidth: 1.5,
         originX: 'center',
         originY: 'center',
@@ -972,7 +1013,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const lineEndX = textX - anchorX;
       const lineEndY = textY - anchorY;
       const line = new fabric.Line([0, 0, lineEndX, lineEndY], {
-        stroke: calloutColor,
+        stroke: '#333333',
         strokeWidth: 1.5,
         selectable: false,
       });
@@ -982,7 +1023,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         left: lineEndX,
         top: lineEndY - 8,
         fontSize: 12,
-        fill: calloutColor,
+        fill: '#333333',
         fontFamily: 'Arial',
         backgroundColor: '', // Clear/transparent background
         selectable: false,
@@ -1130,21 +1171,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             left: annotation.anchorPosition.x * CANVAS_SCALE,
             top: annotation.anchorPosition.y * CANVAS_SCALE,
           });
-          
-          // Update callout colors for dark mode
-          if (existingObj instanceof fabric.Group) {
-            const calloutColor = canvasState.darkMode ? '#ffffff' : '#333333';
-            existingObj.getObjects().forEach((obj) => {
-              if (obj instanceof fabric.IText) {
-                obj.set({ fill: calloutColor });
-              } else if (obj instanceof fabric.Line) {
-                obj.set({ stroke: calloutColor });
-              } else if (obj instanceof fabric.Circle) {
-                obj.set({ stroke: calloutColor });
-              }
-            });
-          }
-          
           existingObj.setCoords();
         }
       } else {
@@ -1171,29 +1197,21 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
 
-    // Reorder annotation objects to match the store array order (z-ordering)
-    // Similar to how we handle components
+    // Reorder annotation objects to match store order.
+    // Store order: first = back, last = front.
     const annotationObjects: fabric.FabricObject[] = [];
-    viewAnnotations.forEach((annotation) => {
-      const fabricObj = canvas.getObjects().find((obj) => {
-        const data = getObjectData(obj);
-        return data?.id === annotation.id && data.isAnnotation;
+    viewAnnotations.forEach((ann) => {
+      const fabricObj = canvas.getObjects().find((o) => {
+        const data = getObjectData(o);
+        return data?.id === ann.id && data.isAnnotation;
       });
-      if (fabricObj) {
-        annotationObjects.push(fabricObj);
-      }
+      if (fabricObj) annotationObjects.push(fabricObj);
     });
-    
-    // Temporarily disable selection events to prevent clearing selection during reordering
+
+    // Avoid selection churn while we reorder.
     isUpdatingSelectionRef.current = true;
-
-    // Remove all annotation objects from canvas
     annotationObjects.forEach((obj) => canvas.remove(obj));
-    
-    // Re-add them in the correct order (store order)
     annotationObjects.forEach((obj) => canvas.add(obj));
-
-    // Re-enable selection events
     isUpdatingSelectionRef.current = false;
 
     canvas.renderAll();
@@ -1208,7 +1226,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       activeView: canvasState.activeView,
       componentCount: components[canvasState.activeView]?.length || 0,
       annotationCount: annotations[canvasState.activeView]?.length || 0,
-      components: components[canvasState.activeView],
+      componentIds: components[canvasState.activeView]?.map(c => c.id),
+      annotationIds: annotations[canvasState.activeView]?.map(a => a.id),
       canvasVersion
     });
     
@@ -1225,16 +1244,47 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     syncAnnotations(viewAnnotations);
     
     // Ensure proper z-ordering: grid at back
-    // We don't force annotations to front anymore to allow manual layering
+    // Build a deterministic stack order:
+    //   1) grid (back)
+    //   2) components in store order
+    //   3) annotations in store order
+    // This makes annotation layer ordering work relative to components too.
     const objects = canvas.getObjects();
-    
-    // Send all grid objects to back
-    objects.forEach((obj) => {
-      const data = getObjectData(obj);
-      if (data?.isGrid) {
-        canvas.sendObjectToBack(obj);
-      }
+
+    const gridObjs = objects.filter((o) => getObjectData(o)?.isGrid);
+    const componentObjs: fabric.FabricObject[] = [];
+    const annotationObjs: fabric.FabricObject[] = [];
+
+    viewComponents.forEach((c) => {
+      const obj = objects.find((o) => {
+        const d = getObjectData(o);
+        return d?.id === c.id && !d.isGrid && !d.isLabel && !d.isAnnotation;
+      });
+      if (obj) componentObjs.push(obj);
     });
+
+    viewAnnotations.forEach((a) => {
+      const obj = objects.find((o) => {
+        const d = getObjectData(o);
+        return d?.id === a.id && d.isAnnotation;
+      });
+      if (obj) annotationObjs.push(obj);
+    });
+
+    console.log('[useFabricCanvas] Reordering canvas stack', {
+      gridCount: gridObjs.length,
+      componentCount: componentObjs.length,
+      annotationCount: annotationObjs.length,
+      componentIds: componentObjs.map(o => getObjectData(o)?.id),
+      annotationIds: annotationObjs.map(o => getObjectData(o)?.id),
+    });
+
+    isUpdatingSelectionRef.current = true;
+    // Remove and re-add in our desired order.
+    // Keep grid objects first so they remain at the back.
+    [...gridObjs, ...componentObjs, ...annotationObjs].forEach((o) => canvas.remove(o));
+    [...gridObjs, ...componentObjs, ...annotationObjs].forEach((o) => canvas.add(o));
+    isUpdatingSelectionRef.current = false;
 
     // Restore selection state after sync
     // This is crucial because removing/re-adding objects (in syncComponents) clears selection

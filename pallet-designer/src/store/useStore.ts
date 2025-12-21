@@ -82,6 +82,7 @@ const initialState: Omit<AppState, keyof AppActions> = {
   selectedAnnotationId: null,
   currentPreset: 'custom',
   clipboard: null,
+  annotationClipboard: null,
   history: {
     past: [],
     future: [],
@@ -158,11 +159,11 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   selectComponent: (id) => {
-    set({ selectedComponentIds: id ? [id] : [] });
+    set({ selectedComponentIds: id ? [id] : [], selectedAnnotationId: null });
   },
 
   selectComponents: (ids) => {
-    set({ selectedComponentIds: ids });
+    set({ selectedComponentIds: ids, selectedAnnotationId: null });
   },
 
   addToSelection: (id) => {
@@ -244,6 +245,62 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       },
       selectedComponentIds: [newComponent.id],
       clipboard: { ...clipboard, position: newComponent.position }, // Update clipboard position for next paste
+      history: {
+        past: [...state.history.past, { components: state.components, annotations: state.annotations }],
+        future: [],
+      },
+    }));
+  },
+
+  copyAnnotation: (id: string) => {
+    const { annotations } = get();
+    for (const view of Object.keys(annotations) as ViewType[]) {
+      const ann = annotations[view].find((a) => a.id === id);
+      if (ann) {
+        set({ annotationClipboard: { ...ann } });
+        break;
+      }
+    }
+  },
+
+  duplicateAnnotation: (id: string) => {
+    const { annotations, canvas } = get();
+    const view = canvas.activeView;
+    const viewAnnotations = annotations[view];
+    const ann = viewAnnotations.find((a) => a.id === id);
+    if (!ann) return;
+
+    const newId = generateId();
+
+    let duplicated: Annotation;
+    if (ann.type === 'text') {
+      duplicated = {
+        ...ann,
+        id: newId,
+        position: { x: ann.position.x + 20, y: ann.position.y + 20 },
+      };
+    } else if (ann.type === 'dimension') {
+      duplicated = {
+        ...ann,
+        id: newId,
+        startPosition: { x: ann.startPosition.x + 20, y: ann.startPosition.y + 20 },
+        endPosition: { x: ann.endPosition.x + 20, y: ann.endPosition.y + 20 },
+      };
+    } else {
+      duplicated = {
+        ...ann,
+        id: newId,
+        anchorPosition: { x: ann.anchorPosition.x + 20, y: ann.anchorPosition.y + 20 },
+        textPosition: { x: ann.textPosition.x + 20, y: ann.textPosition.y + 20 },
+      };
+    }
+
+    set((state) => ({
+      annotations: {
+        ...state.annotations,
+        [view]: [...state.annotations[view], duplicated],
+      },
+      selectedAnnotationId: newId,
       history: {
         past: [...state.history.past, { components: state.components, annotations: state.annotations }],
         future: [],
@@ -594,12 +651,24 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
 
   // Annotation Layer ordering actions
   bringAnnotationToFront: (id) => {
+    console.log('[Store] bringAnnotationToFront called', { id });
     const { annotations, canvas } = get();
     const view = canvas.activeView;
     const viewAnnotations = annotations[view];
     const index = viewAnnotations.findIndex((a) => a.id === id);
     
-    if (index === -1 || index === viewAnnotations.length - 1) return;
+    console.log('[Store] bringAnnotationToFront', { 
+      id, 
+      index, 
+      totalAnnotations: viewAnnotations.length,
+      annotationIds: viewAnnotations.map(a => a.id),
+      willExit: index === -1 || index === viewAnnotations.length - 1
+    });
+    
+    if (index === -1 || index === viewAnnotations.length - 1) {
+      console.log('[Store] bringAnnotationToFront - exiting early (already at front or not found)');
+      return;
+    }
     
     const annotation = viewAnnotations[index];
     const newAnnotations = [
@@ -607,6 +676,11 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       ...viewAnnotations.slice(index + 1),
       annotation,
     ];
+    
+    console.log('[Store] bringAnnotationToFront setting new order', {
+      oldIds: viewAnnotations.map(a => a.id),
+      newIds: newAnnotations.map(a => a.id),
+    });
     
     set({
       annotations: { ...annotations, [view]: newAnnotations },
@@ -614,16 +688,32 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   bringAnnotationForward: (id) => {
+    console.log('[Store] bringAnnotationForward called', { id });
     const { annotations, canvas } = get();
     const view = canvas.activeView;
     const viewAnnotations = annotations[view];
     const index = viewAnnotations.findIndex((a) => a.id === id);
     
-    if (index === -1 || index === viewAnnotations.length - 1) return;
+    console.log('[Store] bringAnnotationForward', { 
+      id, 
+      index, 
+      totalAnnotations: viewAnnotations.length,
+      willExit: index === -1 || index === viewAnnotations.length - 1
+    });
+    
+    if (index === -1 || index === viewAnnotations.length - 1) {
+      console.log('[Store] bringAnnotationForward - exiting early (already at front or not found)');
+      return;
+    }
     
     const newAnnotations = [...viewAnnotations];
     // Swap with next element
     [newAnnotations[index], newAnnotations[index + 1]] = [newAnnotations[index + 1], newAnnotations[index]];
+    
+    console.log('[Store] bringAnnotationForward setting new order', {
+      oldIds: viewAnnotations.map(a => a.id),
+      newIds: newAnnotations.map(a => a.id),
+    });
     
     set({
       annotations: { ...annotations, [view]: newAnnotations },
@@ -631,12 +721,23 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   },
 
   sendAnnotationToBack: (id) => {
+    console.log('[Store] sendAnnotationToBack called', { id });
     const { annotations, canvas } = get();
     const view = canvas.activeView;
     const viewAnnotations = annotations[view];
     const index = viewAnnotations.findIndex((a) => a.id === id);
     
-    if (index <= 0) return;
+    console.log('[Store] sendAnnotationToBack', { 
+      id, 
+      index, 
+      totalAnnotations: viewAnnotations.length,
+      willExit: index <= 0
+    });
+    
+    if (index <= 0) {
+      console.log('[Store] sendAnnotationToBack - exiting early (already at back or not found)');
+      return;
+    }
     
     const annotation = viewAnnotations[index];
     const newAnnotations = [
@@ -645,22 +746,43 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       ...viewAnnotations.slice(index + 1),
     ];
     
+    console.log('[Store] sendAnnotationToBack setting new order', {
+      oldIds: viewAnnotations.map(a => a.id),
+      newIds: newAnnotations.map(a => a.id),
+    });
+    
     set({
       annotations: { ...annotations, [view]: newAnnotations },
     });
   },
 
   sendAnnotationBackward: (id) => {
+    console.log('[Store] sendAnnotationBackward called', { id });
     const { annotations, canvas } = get();
     const view = canvas.activeView;
     const viewAnnotations = annotations[view];
     const index = viewAnnotations.findIndex((a) => a.id === id);
     
-    if (index <= 0) return;
+    console.log('[Store] sendAnnotationBackward', { 
+      id, 
+      index, 
+      totalAnnotations: viewAnnotations.length,
+      willExit: index <= 0
+    });
+    
+    if (index <= 0) {
+      console.log('[Store] sendAnnotationBackward - exiting early (already at back or not found)');
+      return;
+    }
     
     const newAnnotations = [...viewAnnotations];
     // Swap with previous element
     [newAnnotations[index - 1], newAnnotations[index]] = [newAnnotations[index], newAnnotations[index - 1]];
+    
+    console.log('[Store] sendAnnotationBackward setting new order', {
+      oldIds: viewAnnotations.map(a => a.id),
+      newIds: newAnnotations.map(a => a.id),
+    });
     
     set({
       annotations: { ...annotations, [view]: newAnnotations },

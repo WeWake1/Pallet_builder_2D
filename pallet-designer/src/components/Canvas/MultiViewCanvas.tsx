@@ -106,7 +106,7 @@ export function MultiViewCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
-  const { canvas, setActiveView, setEditorMode, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent } = useStore();
+  const { canvas, setActiveView, setEditorMode, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent, selectComponent, selectAnnotation } = useStore();
   const { activeView, editorMode, zoom } = canvas;
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 });
@@ -361,6 +361,16 @@ export function MultiViewCanvas() {
     setContextMenu(null);
   }, []);
 
+  // Handle clicking on the background to deselect
+  const handleBackgroundClick = useCallback((e: React.MouseEvent) => {
+    // Only deselect if clicking the background area, not the canvas itself
+    // The canvas is inside canvasWrapperRef
+    if (canvasWrapperRef.current && !canvasWrapperRef.current.contains(e.target as Node)) {
+      selectComponent(null);
+      selectAnnotation(null);
+    }
+  }, [selectComponent, selectAnnotation]);
+
   return (
     <div ref={containerRef} className="h-full flex flex-col bg-[var(--color-background)] overflow-hidden">
       {/* Toolbar */}
@@ -514,6 +524,7 @@ export function MultiViewCanvas() {
             {/* Scrollable canvas area */}
             <div 
               className="flex-1 overflow-auto flex items-center justify-center bg-[var(--color-background)]"
+              onClick={handleBackgroundClick}
               onScroll={(e) => {
                 const target = e.target as HTMLDivElement;
                 setScrollOffset({ x: target.scrollLeft, y: target.scrollTop });
@@ -533,7 +544,7 @@ export function MultiViewCanvas() {
                   onContextMenu={handleContextMenu}
                   onMouseMove={handleCanvasMouseMove}
                   onMouseLeave={handleCanvasMouseLeave}
-                  className={`bg-white dark:bg-slate-800 relative transition-all shadow-xl ${
+                  className={`${canvas.darkMode ? 'bg-slate-800' : 'bg-white'} relative transition-all shadow-xl ${
                     isDragOver ? 'ring-4 ring-[var(--color-primary)] ring-opacity-50' : ''
                   }`}
                   style={{
