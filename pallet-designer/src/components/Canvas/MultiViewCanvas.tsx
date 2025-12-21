@@ -106,7 +106,7 @@ export function MultiViewCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
-  const { canvas, setActiveView, setEditorMode, setZoom, deleteComponent, deleteAnnotation, selectedComponentIds, selectedAnnotationId, addComponent, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent, selectComponent, selectAnnotation } = useStore();
+  const { canvas, setActiveView, setEditorMode, setZoom, selectedComponentIds, selectedAnnotationId, addComponent, selectComponent, selectAnnotation } = useStore();
   const { activeView, editorMode, zoom } = canvas;
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 });
@@ -188,6 +188,23 @@ export function MultiViewCanvas() {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') {
         return;
       }
+
+      // Get fresh state directly from store to avoid stale closures and dependency churn
+      const { 
+        selectedComponentIds, 
+        selectedAnnotationId, 
+        deleteComponent, 
+        deleteAnnotation,
+        undo,
+        redo,
+        copyComponent,
+        pasteComponent,
+        duplicateComponent,
+        bringForward,
+        sendBackward,
+        bringToFront,
+        sendToBack
+      } = useStore.getState();
       
       // Undo: Ctrl/Cmd + Z
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -220,7 +237,6 @@ export function MultiViewCanvas() {
       // Duplicate: Ctrl/Cmd + D
       if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedComponentIds.length > 0) {
         e.preventDefault();
-        const { duplicateComponent } = useStore.getState();
         duplicateComponent(selectedComponentIds[0]);
         return;
       }
@@ -264,7 +280,7 @@ export function MultiViewCanvas() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedComponentIds, selectedAnnotationId, deleteComponent, deleteAnnotation, bringToFront, bringForward, sendToBack, sendBackward, undo, redo, copyComponent, pasteComponent]);
+  }, []);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -482,8 +498,9 @@ export function MultiViewCanvas() {
           <div
             key="views-canvas"
             ref={workspaceRef}
-            className="flex-1 flex flex-col overflow-hidden"
+            className="flex-1 flex flex-col overflow-hidden outline-none"
             onWheel={handleWheel}
+            tabIndex={0}
           >
             {/* Top ruler row */}
             <div className="flex shrink-0">

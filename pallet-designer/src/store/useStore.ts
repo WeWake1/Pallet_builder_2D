@@ -115,6 +115,8 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         ...state.components,
         [view]: [...state.components[view], component],
       },
+      selectedComponentIds: [id],
+      selectedAnnotationId: null,
       history: {
         past: [...state.history.past, { components, annotations }],
         future: [], // Clear future on new action
@@ -333,6 +335,8 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         ...state.annotations,
         [view]: [...state.annotations[view], annotation],
       },
+      selectedAnnotationId: id,
+      selectedComponentIds: [],
       history: {
         past: [...state.history.past, { components, annotations }],
         future: [], // Clear future on new action
