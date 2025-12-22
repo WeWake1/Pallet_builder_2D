@@ -19,7 +19,8 @@ export function Header({ onOpenSpecs }: HeaderProps) {
     annotations,
     specification,
     canvas,
-    toggleDarkMode
+    toggleDarkMode,
+    finalCanvasExportFn
   } = useStore();
   const { darkMode } = canvas;
   const canUndo = useCanUndo();
@@ -29,12 +30,16 @@ export function Header({ onOpenSpecs }: HeaderProps) {
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
+      // If we have a final canvas export function (user is on Final tab), use it
+      const finalCanvasDataUrl = finalCanvasExportFn ? finalCanvasExportFn() : null;
+
       await exportToPDF({
         components,
         annotations,
         specification,
         branding,
         currentPreset,
+        finalCanvasDataUrl,
       });
     } catch (error) {
       console.error('Failed to export PDF:', error);

@@ -87,11 +87,15 @@ const initialState: Omit<AppState, keyof AppActions> = {
     past: [],
     future: [],
   },
+  finalCanvasExportFn: null,
 };
 
 // Create store
 export const useStore = create<AppState & AppActions>((set, get) => ({
   ...initialState,
+
+  // Register final canvas export function
+  setFinalCanvasExportFn: (fn) => set({ finalCanvasExportFn: fn }),
 
   // Helper to save current state to history before a mutation
   // This follows the Excalidraw pattern of capturing state before changes

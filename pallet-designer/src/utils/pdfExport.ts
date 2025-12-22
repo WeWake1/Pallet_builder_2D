@@ -9,6 +9,7 @@ interface ExportOptions {
   specification: PalletSpecification;
   branding: BrandingConfig;
   currentPreset: string;
+  finalCanvasDataUrl?: string | null;
 }
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
@@ -223,7 +224,7 @@ async function renderViewToDataUrl(
 
 // Main export function - creates a professional multi-view PDF
 export async function exportToPDF(options: ExportOptions): Promise<void> {
-  const { components, annotations, specification, branding, currentPreset } = options;
+  const { components, annotations, specification, branding, currentPreset, finalCanvasDataUrl } = options;
   
   // Create PDF in A4 landscape for better view layout
   const pdf = new jsPDF({
@@ -234,6 +235,15 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   
   const pageWidth = 297;
   const pageHeight = 210;
+
+  // If we have the final canvas image (from the editable preview), use that directly
+  if (finalCanvasDataUrl) {
+    pdf.addImage(finalCanvasDataUrl, 'PNG', 0, 0, pageWidth, pageHeight);
+    const fileName = `pallet-design-${currentPreset}-${Date.now()}.pdf`;
+    pdf.save(fileName);
+    return;
+  }
+
   const margin = 12;
   const contentWidth = pageWidth - 2 * margin;
   const contentHeight = pageHeight - 2 * margin;

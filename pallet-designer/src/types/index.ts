@@ -197,6 +197,9 @@ export interface AppState {
 
   // Clipboard for annotation copy/duplicate
   annotationClipboard: Annotation | null;
+
+  // Function to export the Final Canvas as an image (if available)
+  finalCanvasExportFn: (() => string) | null;
   
   // History for undo/redo - stores both components and annotations
   history: {
@@ -270,4 +273,7 @@ export interface AppActions {
   
   // Reset
   resetCanvas: () => void;
+
+  // Register final canvas export function
+  setFinalCanvasExportFn: (fn: (() => string) | null) => void;
 }

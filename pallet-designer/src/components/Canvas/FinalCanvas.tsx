@@ -33,6 +33,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
     canvas: canvasState,
     selectComponents,
     selectComponent,
+    setFinalCanvasExportFn,
   } = useStore();
 
   const isDarkMode = canvasState.darkMode;
@@ -118,11 +119,25 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
       selectComponent(null);
     });
 
+    // Register export function
+    setFinalCanvasExportFn(() => {
+      if (!fabricRef.current) return '';
+      // Temporarily clear selection to avoid exporting selection handles
+      fabricRef.current.discardActiveObject();
+      fabricRef.current.renderAll();
+      
+      return fabricRef.current.toDataURL({
+        format: 'png',
+        multiplier: 2, // High resolution
+      });
+    });
+
     return () => {
+      setFinalCanvasExportFn(null);
       canvas.dispose();
       fabricRef.current = null;
     };
-  }, [selectComponents, selectComponent]);
+  }, [selectComponents, selectComponent, setFinalCanvasExportFn]);
 
   // Update canvas background for dark mode
   useEffect(() => {
@@ -243,7 +258,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
 
     // Specs content
     let specY = specBoxTop + 16 * CANVAS_SCALE / 2;
-    const specLineHeight = 5 * CANVAS_SCALE / 2;
+    const specLineHeight = 10 * CANVAS_SCALE / 2;
     const specX = MARGIN + 3 * CANVAS_SCALE / 2;
 
     // Dimensions
