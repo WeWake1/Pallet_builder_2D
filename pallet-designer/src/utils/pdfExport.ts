@@ -22,23 +22,10 @@ async function renderViewToDataUrl(
   const canvas = new fabric.StaticCanvas(undefined, {
     width: A4_WIDTH_PX,
     height: A4_HEIGHT_PX,
-    backgroundColor: '#ffffff',
+    backgroundColor: undefined, // Transparent background
   });
 
   // Grid removed as per user request for final template
-
-  // Draw paper boundary
-  canvas.add(new fabric.Rect({
-    left: 0,
-    top: 0,
-    width: A4_WIDTH_PX,
-    height: A4_HEIGHT_PX,
-    fill: 'transparent',
-    stroke: '#cccccc',
-    strokeWidth: 1,
-    selectable: false,
-    evented: false,
-  }));
 
   // Draw components
   components.forEach((comp) => {
@@ -250,6 +237,35 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   const margin = 12;
   const contentWidth = pageWidth - 2 * margin;
   const contentHeight = pageHeight - 2 * margin;
+
+  // === WATERMARK (Background) ===
+  // Draw this first so it appears behind everything else
+  if (branding.watermarkText) {
+    pdf.setTextColor(245, 245, 245); // Very light gray
+    pdf.setFontSize(20);
+    pdf.setFont('helvetica', 'bold');
+    
+    const text = branding.watermarkText;
+    const angle = 45;
+    
+    // Create a repeating pattern
+    // We start negative and go beyond page dimensions to ensure coverage when rotated
+    const stepX = 80; // Horizontal spacing
+    const stepY = 80; // Vertical spacing
+    
+    for (let x = -100; x < pageWidth + 100; x += stepX) {
+      for (let y = -100; y < pageHeight + 100; y += stepY) {
+        // Offset every other row for a brick pattern look
+        const xOffset = (y / stepY) % 2 === 0 ? 0 : stepX / 2;
+        
+        pdf.text(text, x + xOffset, y, { 
+          angle: angle, 
+          align: 'center',
+          renderingMode: 'fill'
+        });
+      }
+    }
+  }
   
   // === HEADER ===
   let y = margin;
@@ -390,10 +406,10 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
     );
     
     // View background
-    pdf.setFillColor(255, 255, 255);
+    // Transparent background to show watermark
     pdf.setDrawColor(200, 200, 200);
     pdf.setLineWidth(0.3);
-    pdf.roundedRect(pos.x, pos.y, viewWidth, viewHeight, 1, 1, 'FD');
+    pdf.roundedRect(pos.x, pos.y, viewWidth, viewHeight, 1, 1, 'S');
     
     // View title bar
     pdf.setFillColor(241, 245, 249);
@@ -440,22 +456,6 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
     footerY,
     { align: 'right' }
   );
-  
-  // Watermark (subtle)
-  if (branding.watermarkText) {
-    pdf.setFontSize(50);
-    pdf.setTextColor(245, 245, 245);
-    pdf.setFont('helvetica', 'bold');
-    pdf.text(
-      branding.watermarkText,
-      pageWidth / 2,
-      pageHeight / 2,
-      {
-        align: 'center',
-        angle: 30,
-      }
-    );
-  }
   
   // Save the PDF
   const fileName = `pallet-design-${currentPreset}-${Date.now()}.pdf`;
