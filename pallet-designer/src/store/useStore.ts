@@ -88,6 +88,13 @@ const initialState: Omit<AppState, keyof AppActions> = {
     future: [],
   },
   finalCanvasExportFn: null,
+  finalViewConfig: {
+    top: { x: 0, y: 0, scale: 1 },
+    side: { x: 0, y: 0, scale: 1 },
+    end: { x: 0, y: 0, scale: 1 },
+    bottom: { x: 0, y: 0, scale: 1 },
+  },
+  finalTextConfig: {},
 };
 
 // Create store
@@ -96,6 +103,28 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
 
   // Register final canvas export function
   setFinalCanvasExportFn: (fn) => set({ finalCanvasExportFn: fn }),
+
+  // Update final view config
+  updateFinalViewConfig: (view, config) => set((state) => ({
+    finalViewConfig: {
+      ...state.finalViewConfig,
+      [view]: config,
+    },
+  })),
+
+  updateFinalTextConfig: (id, config) => {
+    set((state) => ({
+      finalTextConfig: {
+        ...state.finalTextConfig,
+        [id]: {
+          ...(state.finalTextConfig[id] || {}),
+          ...config,
+        },
+      },
+    }));
+  },
+
+  reset: () => set(initialState),
 
   // Helper to save current state to history before a mutation
   // This follows the Excalidraw pattern of capturing state before changes

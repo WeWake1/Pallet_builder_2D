@@ -33,13 +33,16 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
       const y = comp.position.y * CANVAS_SCALE;
 
       const rect = new fabric.Rect({
-        left: x,
-        top: y,
+        left: x + w / 2,
+        top: y + h / 2,
         width: w,
         height: h,
         fill: colors.fill,
         stroke: colors.stroke,
         strokeWidth: 1,
+        angle: comp.rotation,
+        originX: 'center',
+        originY: 'center',
         selectable: false,
         evented: false,
       });

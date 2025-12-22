@@ -410,7 +410,7 @@ function AnnotationPropertiesPanel({ annotation }: { annotation: Annotation }) {
 }
 
 export function PropertiesPanel() {
-  const { updateComponent, deleteComponent, duplicateComponent, bringToFront, bringForward, sendToBack, sendBackward } = useStore();
+  const { updateComponent, deleteComponent, duplicateComponent, bringToFront, bringForward, sendToBack, sendBackward, selectedComponentIds } = useStore();
   const selectedComponent = useSelectedComponent();
   const selectedAnnotation = useSelectedAnnotation();
 
@@ -429,12 +429,13 @@ export function PropertiesPanel() {
     const numValue = parseInt(value, 10);
     if (!isNaN(numValue) && numValue > 0) {
       updateComponent(selectedComponent.id, {
-        dimensions: {
-          ...selectedComponent.dimensions,
-          [key]: numValue,
-        },
+        dimensions: { ...selectedComponent.dimensions, [key]: numValue }
       });
     }
+  };
+
+  const handleLayerAction = (action: (id: string) => void) => {
+    selectedComponentIds.forEach(id => action(id));
   };
 
   const handlePositionChange = (key: 'x' | 'y', value: string) => {
@@ -652,7 +653,7 @@ export function PropertiesPanel() {
         </h4>
         <div className="grid grid-cols-4 gap-1">
           <button
-            onClick={() => sendToBack(selectedComponent.id)}
+            onClick={() => handleLayerAction(sendToBack)}
             className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
             title="Send to Back (Ctrl+Shift+[)"
           >
@@ -661,7 +662,7 @@ export function PropertiesPanel() {
             </svg>
           </button>
           <button
-            onClick={() => sendBackward(selectedComponent.id)}
+            onClick={() => handleLayerAction(sendBackward)}
             className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
             title="Send Backward (Ctrl+[)"
           >
@@ -670,7 +671,7 @@ export function PropertiesPanel() {
             </svg>
           </button>
           <button
-            onClick={() => bringForward(selectedComponent.id)}
+            onClick={() => handleLayerAction(bringForward)}
             className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
             title="Bring Forward (Ctrl+])"
           >
@@ -679,7 +680,7 @@ export function PropertiesPanel() {
             </svg>
           </button>
           <button
-            onClick={() => bringToFront(selectedComponent.id)}
+            onClick={() => handleLayerAction(bringToFront)}
             className="h-8 rounded border border-[var(--color-border)] text-xs text-[var(--color-text)] hover:bg-gray-50 transition-colors flex items-center justify-center"
             title="Bring to Front (Ctrl+Shift+])"
           >

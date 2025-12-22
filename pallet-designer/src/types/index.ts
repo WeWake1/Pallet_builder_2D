@@ -198,6 +198,12 @@ export interface AppState {
   // Clipboard for annotation copy/duplicate
   annotationClipboard: Annotation | null;
 
+  // Final View Configuration (for persistence of Final Tab layout)
+  finalViewConfig: Record<ViewType, { x: number; y: number; scale: number }>;
+  
+  // Final Text Configuration (for persistence of Final Tab text edits)
+  finalTextConfig: Record<string, { fontSize?: number; left?: number; top?: number; scaleX?: number; scaleY?: number; angle?: number; text?: string }>;
+
   // Function to export the Final Canvas as an image (if available)
   finalCanvasExportFn: (() => string) | null;
   
@@ -271,6 +277,10 @@ export interface AppActions {
   redo: () => void;
   captureHistory: () => void; // Capture current state before a mutation
   
+  // Final View Actions
+  updateFinalViewConfig: (view: ViewType, config: { x: number; y: number; scale: number }) => void;
+  updateFinalTextConfig: (id: string, config: { fontSize?: number; left?: number; top?: number; scaleX?: number; scaleY?: number; angle?: number; text?: string }) => void;
+
   // Reset
   resetCanvas: () => void;
 

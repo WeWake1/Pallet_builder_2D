@@ -10,6 +10,7 @@ interface ExportOptions {
   branding: BrandingConfig;
   currentPreset: string;
   finalCanvasDataUrl?: string | null;
+  finalViewConfig?: Record<ViewType, { x: number; y: number; scale: number }>;
 }
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
@@ -29,7 +30,10 @@ async function renderViewToDataUrl(
   // Grid removed as per user request for final template
 
   // Draw components
-  components.forEach((comp) => {
+  // Sort by Z-index to ensure correct layering
+  const sortedComponents = [...components].sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+  
+  sortedComponents.forEach((comp) => {
     // Use custom color if set, otherwise use default for component type
     const colors = comp.color || COMPONENT_COLORS[comp.type as keyof typeof COMPONENT_COLORS] || { fill: '#cccccc', stroke: '#999999' };
     const w = comp.dimensions.width * CANVAS_SCALE;
@@ -217,6 +221,46 @@ async function renderViewToDataUrl(
     format: 'png',
     multiplier: 1.5,
   });
+  
+  // Auto-scale to fit canvas
+  const objects = canvas.getObjects();
+  if (objects.length > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    
+    objects.forEach(obj => {
+      const b = obj.getBoundingRect();
+      minX = Math.min(minX, b.left);
+      minY = Math.min(minY, b.top);
+      maxX = Math.max(maxX, b.left + b.width);
+      maxY = Math.max(maxY, b.top + b.height);
+    });
+    
+    const width = maxX - minX;
+    const height = maxY - minY;
+    
+    if (width > 0 && height > 0) {
+      const padding = 40;
+      const availableWidth = A4_WIDTH_PX - padding * 2;
+      const availableHeight = A4_HEIGHT_PX - padding * 2;
+      
+      const scaleX = availableWidth / width;
+      const scaleY = availableHeight / height;
+      const scale = Math.min(scaleX, scaleY); // Use uniform scale
+      
+      // Calculate center position
+      const centerX = A4_WIDTH_PX / 2;
+      const centerY = A4_HEIGHT_PX / 2;
+      
+      const boundsCenterX = minX + width / 2;
+      const boundsCenterY = minY + height / 2;
+      
+      // Pan to center the bounds
+      const panX = centerX - boundsCenterX * scale;
+      const panY = centerY - boundsCenterY * scale;
+      
+      canvas.setViewportTransform([scale, 0, 0, scale, panX, panY]);
+    }
+  }
   
   canvas.dispose();
   return dataUrl;
