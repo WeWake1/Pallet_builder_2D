@@ -1,6 +1,6 @@
 import { useStore, useSelectedComponent, useSelectedAnnotation } from '../../store/useStore';
 import { COMPONENT_COLORS, A4_WIDTH_MM, A4_HEIGHT_MM } from '../../constants';
-import type { Annotation } from '../../types';
+import type { Annotation, PalletComponent, ViewType } from '../../types';
 
 // Preset color options
 const COLOR_PRESETS = [
@@ -434,6 +434,28 @@ export function PropertiesPanel() {
     }
   };
 
+  const handleColorChange = (updates: { fill?: string; stroke?: string }) => {
+    const { components } = useStore.getState();
+    selectedComponentIds.forEach(id => {
+      // Find component to get current color
+      let component: PalletComponent | undefined;
+      for (const view of Object.keys(components) as ViewType[]) {
+        component = components[view].find(c => c.id === id);
+        if (component) break;
+      }
+      
+      if (component) {
+        const currentColor = component.color || COMPONENT_COLORS[component.type];
+        updateComponent(id, {
+          color: {
+            ...currentColor,
+            ...updates
+          }
+        });
+      }
+    });
+  };
+
   const handleLayerAction = (action: (id: string) => void) => {
     selectedComponentIds.forEach(id => action(id));
   };
@@ -577,7 +599,7 @@ export function PropertiesPanel() {
           {COLOR_PRESETS.map((preset) => (
             <button
               key={preset.name}
-              onClick={() => updateComponent(selectedComponent.id, { color: { fill: preset.fill, stroke: preset.stroke } })}
+              onClick={() => handleColorChange({ fill: preset.fill, stroke: preset.stroke })}
               className={`w-8 h-8 rounded-md border-2 transition-all hover:scale-110 ${
                 colors.fill === preset.fill && colors.stroke === preset.stroke
                   ? 'ring-2 ring-[var(--color-primary)] ring-offset-1'
@@ -597,7 +619,7 @@ export function PropertiesPanel() {
                 <input
                   type="color"
                   value={colors.fill}
-                  onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
+                  onChange={(e) => handleColorChange({ fill: e.target.value })}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
                 <div 
@@ -608,7 +630,7 @@ export function PropertiesPanel() {
               <input
                 type="text"
                 value={colors.fill}
-                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, fill: e.target.value } })}
+                onChange={(e) => handleColorChange({ fill: e.target.value })}
                 className="flex-1 h-7 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
             </div>
@@ -620,7 +642,7 @@ export function PropertiesPanel() {
                 <input
                   type="color"
                   value={colors.stroke}
-                  onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
+                  onChange={(e) => handleColorChange({ stroke: e.target.value })}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 />
                 <div 
@@ -631,7 +653,7 @@ export function PropertiesPanel() {
               <input
                 type="text"
                 value={colors.stroke}
-                onChange={(e) => updateComponent(selectedComponent.id, { color: { ...colors, stroke: e.target.value } })}
+                onChange={(e) => handleColorChange({ stroke: e.target.value })}
                 className="flex-1 h-7 px-2 rounded border border-[var(--color-border)] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
               />
             </div>

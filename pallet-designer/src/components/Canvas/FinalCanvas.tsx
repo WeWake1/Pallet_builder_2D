@@ -520,13 +520,17 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
         let autoOffsetY: number;
 
         if (contentAspect > viewAspect) {
+          // Content is wider than view box (relative to aspect ratios)
+          // Constrained by width
           autoScale = contentArea.width / paddedW;
           autoOffsetY = (contentArea.height - paddedH * autoScale) / 2;
-          autoOffsetX = (contentArea.width - paddedW * autoScale) / 2; // Centered horizontally
+          autoOffsetX = (contentArea.width - paddedW * autoScale) / 2;
         } else {
+          // Content is taller than view box
+          // Constrained by height
           autoScale = contentArea.height / paddedH;
           autoOffsetX = (contentArea.width - paddedW * autoScale) / 2;
-          autoOffsetY = (contentArea.height - paddedH * autoScale) / 2; // Centered vertically
+          autoOffsetY = (contentArea.height - paddedH * autoScale) / 2;
         }
 
         if (isConfigured) {

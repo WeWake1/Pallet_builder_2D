@@ -18,12 +18,14 @@ const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
 // Render a view to a canvas and return as data URL
 async function renderViewToDataUrl(
   components: PalletComponent[],
-  annotations: Annotation[]
+  annotations: Annotation[],
+  targetWidth: number,
+  targetHeight: number
 ): Promise<string> {
   // Create an off-screen canvas
   const canvas = new fabric.StaticCanvas(undefined, {
-    width: A4_WIDTH_PX,
-    height: A4_HEIGHT_PX,
+    width: targetWidth,
+    height: targetHeight,
     backgroundColor: undefined, // Transparent background
   });
 
@@ -240,16 +242,16 @@ async function renderViewToDataUrl(
     
     if (width > 0 && height > 0) {
       const padding = 40;
-      const availableWidth = A4_WIDTH_PX - padding * 2;
-      const availableHeight = A4_HEIGHT_PX - padding * 2;
+      const availableWidth = targetWidth - padding * 2;
+      const availableHeight = targetHeight - padding * 2;
       
       const scaleX = availableWidth / width;
       const scaleY = availableHeight / height;
       const scale = Math.min(scaleX, scaleY); // Use uniform scale
       
       // Calculate center position
-      const centerX = A4_WIDTH_PX / 2;
-      const centerY = A4_HEIGHT_PX / 2;
+      const centerX = targetWidth / 2;
+      const centerY = targetHeight / 2;
       
       const boundsCenterX = minX + width / 2;
       const boundsCenterY = minY + height / 2;
@@ -456,7 +458,9 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
     // Render view to image
     const viewDataUrl = await renderViewToDataUrl(
       components[pos.view],
-      annotations[pos.view] || []
+      annotations[pos.view] || [],
+      viewWidth * CANVAS_SCALE,
+      viewHeight * CANVAS_SCALE
     );
     
     // View background

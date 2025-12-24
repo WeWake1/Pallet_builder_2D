@@ -385,10 +385,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
       
       const data = getObjectData(e.target);
-      // Only capture history for real objects (not grid, labels)
+      // Only track dragging state
       if (data?.id && !data.isGrid && !data.isLabel) {
         isDraggingRef.current = true;
-        captureHistoryRef.current();
       }
     });
 
@@ -475,6 +474,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
       // Handle ActiveSelection (multi-selection)
       if (target.type === 'activeSelection' || target instanceof fabric.ActiveSelection) {
+        // Capture history before modifying state
+        captureHistoryRef.current();
+
         const activeSelection = target as fabric.ActiveSelection;
         const objects = activeSelection.getObjects();
         
@@ -486,23 +488,28 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           const matrix = obj.calcTransformMatrix();
           const options = fabric.util.qrDecompose(matrix);
           
-          // Calculate Top-Left from the matrix
-          // obj.width/height are unscaled dimensions
-          const topLeft = fabric.util.transformPoint(
-            new fabric.Point(-obj.width / 2, -obj.height / 2),
+          // Calculate absolute center
+          const center = fabric.util.transformPoint(
+            new fabric.Point(0, 0),
             matrix
           );
+          
+          // Calculate new dimensions
+          const finalWidth = obj.width * options.scaleX;
+          const finalHeight = obj.height * options.scaleY;
+          
+          // Calculate top-left (unrotated)
+          const left = center.x - finalWidth / 2;
+          const top = center.y - finalHeight / 2;
 
           const newPosition = {
-            x: Math.round(topLeft.x / CANVAS_SCALE),
-            y: Math.round(topLeft.y / CANVAS_SCALE),
+            x: Math.round(left / CANVAS_SCALE),
+            y: Math.round(top / CANVAS_SCALE),
           };
           
           // Dimensions
           const isRect = obj instanceof fabric.Rect;
-          const finalWidth = obj.width * options.scaleX;
-          const finalHeight = obj.height * options.scaleY;
-
+          
           const newDimensions = isRect ? {
             width: Math.round(finalWidth / CANVAS_SCALE),
             length: Math.round(finalHeight / CANVAS_SCALE),
@@ -524,6 +531,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       
       // Skip annotations for now (handled separately)
       if (data.isAnnotation) return;
+
+      // Capture history before modifying state
+      captureHistoryRef.current();
       
       const { enabled, size } = gridStateRef.current;
       const gridSizePx = size * CANVAS_SCALE;
