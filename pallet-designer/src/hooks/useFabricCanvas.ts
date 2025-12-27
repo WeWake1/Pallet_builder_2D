@@ -234,6 +234,87 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     // Increment canvas version to trigger re-sync of components and annotations
     setCanvasVersion(v => v + 1);
 
+    // Live selection feedback
+    let isSelecting = false;
+    let selectionStartPoint: fabric.Point | null = null;
+
+    canvas.on('mouse:down', (opt) => {
+      // Only start if clicking on empty space (no target) and not in drawing mode
+      if (!opt.target && !canvas.getActiveObject()) {
+        isSelecting = true;
+        selectionStartPoint = canvas.getPointer(opt.e);
+      }
+    });
+
+    canvas.on('mouse:up', () => {
+      isSelecting = false;
+      selectionStartPoint = null;
+      canvas.requestRenderAll();
+    });
+
+    canvas.on('mouse:move', (opt) => {
+      if (isSelecting && selectionStartPoint) {
+        const currentPoint = canvas.getPointer(opt.e);
+        const x = Math.min(selectionStartPoint.x, currentPoint.x);
+        const y = Math.min(selectionStartPoint.y, currentPoint.y);
+        const w = Math.abs(selectionStartPoint.x - currentPoint.x);
+        const h = Math.abs(selectionStartPoint.y - currentPoint.y);
+        
+        const tl = new fabric.Point(x, y);
+        const br = new fabric.Point(x + w, y + h);
+
+        const objects = canvas.getObjects();
+        const ctx = canvas.getSelectionContext();
+        const intersecting: fabric.FabricObject[] = [];
+
+        objects.forEach(obj => {
+            if (!obj.selectable || !obj.visible || obj === canvas.backgroundImage) return;
+            
+            if (obj.intersectsWithRect(tl, br)) {
+                intersecting.push(obj);
+            }
+        });
+
+        if (intersecting.length === 1) {
+            // Use _renderControls to handle transforms and drawing borders + controls
+            intersecting[0]._renderControls(ctx);
+        } else if (intersecting.length > 1) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            intersecting.forEach(obj => {
+                const coords = obj.getCoords();
+                coords.forEach(p => {
+                    if (p.x < minX) minX = p.x;
+                    if (p.x > maxX) maxX = p.x;
+                    if (p.y < minY) minY = p.y;
+                    if (p.y > maxY) maxY = p.y;
+                });
+            });
+
+            const width = maxX - minX;
+            const height = maxY - minY;
+            const center = new fabric.Point(minX + width / 2, minY + height / 2);
+
+            const dummySelection = new fabric.ActiveSelection([], {
+                canvas: canvas,
+            });
+
+            dummySelection.set({
+                left: center.x,
+                top: center.y,
+                width: width,
+                height: height,
+                originX: 'center',
+                originY: 'center',
+                angle: 0
+            });
+            
+            dummySelection.setCoords();
+            dummySelection._renderControls(ctx);
+        }
+      }
+    });
+
     // Handle selection - support multi-selection and grouping
     const handleSelectionChange = (e: Partial<fabric.TEvent> & { selected?: fabric.FabricObject[] }) => {
       if (isUpdatingSelectionRef.current) return;

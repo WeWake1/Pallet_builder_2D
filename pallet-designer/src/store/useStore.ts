@@ -332,19 +332,30 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
     }));
   },
 
-  duplicateComponent: (id) => {
+  duplicateComponent: (id, targetPosition) => {
     const { components } = get();
     
     for (const view of Object.keys(components) as ViewType[]) {
       const component = components[view].find((c) => c.id === id);
       if (component) {
+        // If target position is provided, center the component at that position
+        // Otherwise use the default offset
+        let position = {
+          x: component.position.x + 20,
+          y: component.position.y + 20,
+        };
+
+        if (targetPosition) {
+          position = {
+            x: targetPosition.x - component.dimensions.width / 2,
+            y: targetPosition.y - component.dimensions.length / 2,
+          };
+        }
+
         const newComponent: PalletComponent = {
           ...component,
           id: generateId(),
-          position: {
-            x: component.position.x + 20,
-            y: component.position.y + 20,
-          },
+          position,
         };
         
         set((state) => ({

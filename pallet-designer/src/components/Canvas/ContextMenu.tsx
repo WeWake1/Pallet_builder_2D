@@ -4,12 +4,13 @@ import { useStore } from '../../store/useStore';
 interface ContextMenuProps {
   x: number;
   y: number;
+  canvasPos?: { x: number; y: number };
   componentId: string | null;
   annotationId: string | null;
   onClose: () => void;
 }
 
-export function ContextMenu({ x, y, componentId, annotationId, onClose }: ContextMenuProps) {
+export function ContextMenu({ x, y, canvasPos, componentId, annotationId, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const { 
     deleteComponent, 
@@ -84,7 +85,7 @@ export function ContextMenu({ x, y, componentId, annotationId, onClose }: Contex
 
   const handleDuplicate = () => {
     if (componentId) {
-      duplicateComponent(componentId);
+      duplicateComponent(componentId, canvasPos);
     }
     if (annotationId) {
       duplicateAnnotation(annotationId);

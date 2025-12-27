@@ -120,8 +120,9 @@ export function MultiViewCanvas() {
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [workspaceSize, setWorkspaceSize] = useState({ width: 0, height: 0 });
   const [isDragOver, setIsDragOver] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; componentId: string | null; annotationId: string | null } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; canvasPos?: { x: number; y: number }; componentId: string | null; annotationId: string | null } | null>(null);
   const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number } | null>(null);
+  const cursorPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [, setScrollOffset] = useState({ x: 0, y: 0 });
   const viewComponents = useActiveViewComponents();
 
@@ -262,7 +263,7 @@ export function MultiViewCanvas() {
       // Duplicate: Ctrl/Cmd + D
       if ((e.ctrlKey || e.metaKey) && e.key === 'd' && selectedComponentIds.length > 0) {
         e.preventDefault();
-        duplicateComponent(selectedComponentIds[0]);
+        duplicateComponent(selectedComponentIds[0], cursorPositionRef.current || undefined);
         return;
       }
       
@@ -375,10 +376,12 @@ export function MultiViewCanvas() {
     const yMm = y / CANVAS_SCALE;
     
     setCursorPosition({ x: xMm, y: yMm });
+    cursorPositionRef.current = { x: xMm, y: yMm };
   }, [scale, zoom]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setCursorPosition(null);
+    cursorPositionRef.current = null;
   }, []);
 
   // Handle right-click context menu
@@ -388,14 +391,27 @@ export function MultiViewCanvas() {
     // Check if clicked on a selected component or annotation
     const componentId = selectedComponentIds.length > 0 ? selectedComponentIds[0] : null;
     const annotationId = selectedAnnotationId;
+
+    // Calculate canvas coordinates
+    let canvasPos: { x: number; y: number } | undefined;
+    const wrapper = canvasWrapperRef.current;
+    if (wrapper) {
+      const rect = wrapper.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / (scale * zoom);
+      const y = (e.clientY - rect.top) / (scale * zoom);
+      const xMm = x / CANVAS_SCALE;
+      const yMm = y / CANVAS_SCALE;
+      canvasPos = { x: xMm, y: yMm };
+    }
     
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
+      canvasPos,
       componentId,
       annotationId,
     });
-  }, [selectedComponentIds, selectedAnnotationId]);
+  }, [selectedComponentIds, selectedAnnotationId, scale, zoom]);
 
   // Close context menu when clicking elsewhere
   const closeContextMenu = useCallback(() => {
