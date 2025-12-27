@@ -11,6 +11,7 @@ interface ExportOptions {
   currentPreset: string;
   finalCanvasDataUrl?: string | null;
   finalViewConfig?: Record<ViewType, { x: number; y: number; scale: number }>;
+  finalTextConfig?: Record<string, any>;
 }
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
@@ -20,7 +21,8 @@ async function renderViewToDataUrl(
   components: PalletComponent[],
   annotations: Annotation[],
   targetWidth: number,
-  targetHeight: number
+  targetHeight: number,
+  viewConfig?: { x: number; y: number; scale: number }
 ): Promise<string> {
   // Create an off-screen canvas
   const canvas = new fabric.StaticCanvas(undefined, {
@@ -102,7 +104,7 @@ async function renderViewToDataUrl(
     if (ann.type === 'text') {
       const x = ann.position.x * CANVAS_SCALE;
       const y = ann.position.y * CANVAS_SCALE;
-      const text = new fabric.FabricText(ann.text || 'Text', {
+      const text = new fabric.Text(ann.text || 'Text', {
         left: x,
         top: y,
         fontSize: ann.fontSize || 14,
@@ -155,7 +157,7 @@ async function renderViewToDataUrl(
       const midY = (y + endY) / 2;
       
       if (ann.showValue) {
-        const dimText = new fabric.FabricText(`${Math.round(ann.value)} mm`, {
+        const dimText = new fabric.Text(`${Math.round(ann.value)} mm`, {
           left: midX,
           top: midY - 10,
           fontSize: 11,
@@ -201,7 +203,7 @@ async function renderViewToDataUrl(
       });
       canvas.add(box);
       
-      const calloutText = new fabric.FabricText(ann.text || 'Note', {
+      const calloutText = new fabric.Text(ann.text || 'Note', {
         left: x + boxWidth / 2,
         top: y + boxHeight / 2,
         fontSize: 10,
@@ -216,38 +218,75 @@ async function renderViewToDataUrl(
     }
   });
 
-  canvas.renderAll();
-  
-  // Convert to data URL
-  const dataUrl = canvas.toDataURL({
-    format: 'png',
-    multiplier: 1.5,
-  });
-  
   // Auto-scale to fit canvas
   const objects = canvas.getObjects();
   if (objects.length > 0) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
-    objects.forEach(obj => {
-      const b = obj.getBoundingRect();
-      minX = Math.min(minX, b.left);
-      minY = Math.min(minY, b.top);
-      maxX = Math.max(maxX, b.left + b.width);
-      maxY = Math.max(maxY, b.top + b.height);
+    // Use manual bounding box calculation to match FinalCanvas logic exactly
+    // This ensures consistent behavior between editor and PDF
+    const expandBounds = (x: number, y: number, w: number, h: number, rotation = 0) => {
+      const rad = (rotation * Math.PI) / 180;
+      const cos = Math.abs(Math.cos(rad));
+      const sin = Math.abs(Math.sin(rad));
+      
+      const bbW = w * cos + h * sin;
+      const bbH = w * sin + h * cos;
+      
+      const cx = x + w / 2;
+      const cy = y + h / 2;
+      
+      const bbX = cx - bbW / 2;
+      const bbY = cy - bbH / 2;
+      
+      minX = Math.min(minX, bbX);
+      minY = Math.min(minY, bbY);
+      maxX = Math.max(maxX, bbX + bbW);
+      maxY = Math.max(maxY, bbY + bbH);
+    };
+
+    // We need to iterate over the original components to get accurate dimensions/rotation
+    // The fabric objects on canvas might have different properties
+    components.forEach(comp => {
+      expandBounds(
+        comp.position.x * CANVAS_SCALE,
+        comp.position.y * CANVAS_SCALE,
+        comp.dimensions.width * CANVAS_SCALE,
+        comp.dimensions.length * CANVAS_SCALE,
+        comp.rotation
+      );
+    });
+
+    // Also include annotations in bounds
+    annotations.forEach(ann => {
+      if (ann.type === 'text') {
+        expandBounds(ann.position.x * CANVAS_SCALE, ann.position.y * CANVAS_SCALE, 50, 20, ann.rotation);
+      } else if (ann.type === 'dimension') {
+        minX = Math.min(minX, ann.startPosition.x * CANVAS_SCALE, ann.endPosition.x * CANVAS_SCALE);
+        minY = Math.min(minY, ann.startPosition.y * CANVAS_SCALE, ann.endPosition.y * CANVAS_SCALE);
+        maxX = Math.max(maxX, ann.startPosition.x * CANVAS_SCALE, ann.endPosition.x * CANVAS_SCALE);
+        maxY = Math.max(maxY, ann.startPosition.y * CANVAS_SCALE, ann.endPosition.y * CANVAS_SCALE);
+      } else if (ann.type === 'callout') {
+        minX = Math.min(minX, ann.anchorPosition.x * CANVAS_SCALE, ann.textPosition.x * CANVAS_SCALE);
+        minY = Math.min(minY, ann.anchorPosition.y * CANVAS_SCALE, ann.textPosition.y * CANVAS_SCALE);
+        maxX = Math.max(maxX, ann.anchorPosition.x * CANVAS_SCALE, ann.textPosition.x * CANVAS_SCALE + 80);
+        maxY = Math.max(maxY, ann.anchorPosition.y * CANVAS_SCALE, ann.textPosition.y * CANVAS_SCALE + 30);
+      }
     });
     
     const width = maxX - minX;
     const height = maxY - minY;
     
     if (width > 0 && height > 0) {
-      const padding = 40;
+      // Use proportional padding (5%) instead of fixed pixels to match editor
+      const padding = Math.max(width, height) * 0.05;
       const availableWidth = targetWidth - padding * 2;
       const availableHeight = targetHeight - padding * 2;
       
+      // Calculate auto-scale values
       const scaleX = availableWidth / width;
       const scaleY = availableHeight / height;
-      const scale = Math.min(scaleX, scaleY); // Use uniform scale
+      let scale = Math.min(scaleX, scaleY);
       
       // Calculate center position
       const centerX = targetWidth / 2;
@@ -256,13 +295,34 @@ async function renderViewToDataUrl(
       const boundsCenterX = minX + width / 2;
       const boundsCenterY = minY + height / 2;
       
-      // Pan to center the bounds
-      const panX = centerX - boundsCenterX * scale;
-      const panY = centerY - boundsCenterY * scale;
+      let panX = centerX - boundsCenterX * scale;
+      let panY = centerY - boundsCenterY * scale;
+
+      // Apply manual overrides if present
+      if (viewConfig) {
+        const isConfigured = viewConfig.scale !== 1 || viewConfig.x !== 0 || viewConfig.y !== 0;
+        
+        if (isConfigured) {
+          scale = viewConfig.scale;
+          // Map the offset from editor (relative to view box) to PDF canvas
+          // Editor: group.left = contentArea.x + viewConfig.x
+          // PDF: panX = viewConfig.x - minX * scale
+          panX = viewConfig.x - minX * scale;
+          panY = viewConfig.y - minY * scale;
+        }
+      }
       
       canvas.setViewportTransform([scale, 0, 0, scale, panX, panY]);
     }
   }
+
+  canvas.renderAll();
+  
+  // Convert to data URL with high resolution
+  const dataUrl = canvas.toDataURL({
+    format: 'png',
+    multiplier: 4, // Increased from 1.5 to 4 for high quality
+  });
   
   canvas.dispose();
   return dataUrl;
@@ -270,7 +330,7 @@ async function renderViewToDataUrl(
 
 // Main export function - creates a professional multi-view PDF
 export async function exportToPDF(options: ExportOptions): Promise<void> {
-  const { components, annotations, specification, branding, currentPreset, finalCanvasDataUrl } = options;
+  const { components, annotations, specification, branding, currentPreset, finalViewConfig, finalTextConfig } = options;
   
   // Create PDF in A4 landscape for better view layout
   const pdf = new jsPDF({
@@ -282,17 +342,33 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   const pageWidth = 297;
   const pageHeight = 210;
 
-  // If we have the final canvas image (from the editable preview), use that directly
-  if (finalCanvasDataUrl) {
-    pdf.addImage(finalCanvasDataUrl, 'PNG', 0, 0, pageWidth, pageHeight);
-    const fileName = `pallet-design-${currentPreset}-${Date.now()}.pdf`;
-    pdf.save(fileName);
-    return;
-  }
+  // Always generate high-quality vector PDF instead of using canvas screenshot
+  // This ensures consistent resolution, watermarks, and styling across browsers
 
   const margin = 12;
   const contentWidth = pageWidth - 2 * margin;
   const contentHeight = pageHeight - 2 * margin;
+
+  // Helper to get text content and position (with overrides)
+  const getTextProps = (id: string, defaultText: string, defaultX: number, defaultY: number, defaultSize: number) => {
+    const override = finalTextConfig?.[id];
+    if (override) {
+      // Convert canvas coordinates (px) back to PDF coordinates (mm)
+      // Canvas is 594x420 px (A4 landscape * 2)
+      // PDF is 297x210 mm
+      // So 1 mm = 2 px
+      const scale = 0.5;
+      
+      return {
+        text: override.text || defaultText,
+        x: override.left * scale,
+        y: override.top * scale,
+        size: (override.scaleX || 1) * defaultSize, // Approximate font size scaling
+        angle: override.angle || 0
+      };
+    }
+    return { text: defaultText, x: defaultX, y: defaultY, size: defaultSize, angle: 0 };
+  };
 
   // === WATERMARK (Background) ===
   // Draw this first so it appears behind everything else
@@ -327,15 +403,17 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   let y = margin;
   
   // Company name
-  pdf.setFontSize(18);
+  const companyProps = getTextProps('header_companyName', branding.companyName, margin, y + 5, 18);
+  pdf.setFontSize(companyProps.size);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(30, 122, 201);
-  pdf.text(branding.companyName, margin, y + 5);
+  pdf.text(companyProps.text, companyProps.x, companyProps.y, { angle: companyProps.angle });
   
   // Document title
-  pdf.setFontSize(14);
+  const titleProps = getTextProps('header_docTitle', 'Pallet Specification Drawing', margin, y + 12, 14);
+  pdf.setFontSize(titleProps.size);
   pdf.setTextColor(60, 60, 60);
-  pdf.text('Pallet Specification Drawing', margin, y + 12);
+  pdf.text(titleProps.text, titleProps.x, titleProps.y, { angle: titleProps.angle });
   
   // Right side info
   pdf.setFontSize(9);
@@ -346,8 +424,12 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
     month: 'short',
     day: 'numeric',
   });
-  pdf.text(`Template: ${currentPreset.toUpperCase()}`, pageWidth - margin, y + 3, { align: 'right' });
-  pdf.text(`Date: ${today}`, pageWidth - margin, y + 8, { align: 'right' });
+  
+  const templateProps = getTextProps('header_templateText', `Template: ${currentPreset.toUpperCase()}`, pageWidth - margin, y + 3, 9);
+  pdf.text(templateProps.text, templateProps.x, templateProps.y, { align: 'right', angle: templateProps.angle });
+  
+  const dateProps = getTextProps('header_dateText', `Date: ${today}`, pageWidth - margin, y + 8, 9);
+  pdf.text(dateProps.text, dateProps.x, dateProps.y, { align: 'right', angle: dateProps.angle });
   
   // Header line
   y += 16;
@@ -367,10 +449,11 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   pdf.roundedRect(margin, y, specBoxWidth, specBoxHeight, 2, 2, 'FD');
   
   // Specs title
-  pdf.setFontSize(10);
+  const specsTitleProps = getTextProps('specs_title', 'SPECIFICATIONS', margin + 3, y + 6, 10);
+  pdf.setFontSize(specsTitleProps.size);
   pdf.setFont('helvetica', 'bold');
   pdf.setTextColor(30, 64, 175);
-  pdf.text('SPECIFICATIONS', margin + 3, y + 6);
+  pdf.text(specsTitleProps.text, specsTitleProps.x, specsTitleProps.y, { angle: specsTitleProps.angle });
   
   // Specs content
   pdf.setFontSize(8);
@@ -379,60 +462,49 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   
   let specY = y + 14;
   const specLineHeight = 5;
+  let specCounter = 0;
+  
+  // Helper for spec lines
+  const addSpecLine = (label: string, isBold = false) => {
+    const props = getTextProps(`spec_label_${specCounter++}`, label, margin + 3, specY, 8);
+    pdf.setFont('helvetica', isBold ? 'bold' : 'normal');
+    pdf.text(props.text, props.x, props.y, { angle: props.angle });
+    specY += specLineHeight;
+  };
   
   // Dimensions section
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Dimensions', margin + 3, specY);
-  specY += specLineHeight;
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(`L x W x H: ${specification.overallDimensions.length} x ${specification.overallDimensions.width} x ${specification.overallDimensions.height} mm`, margin + 3, specY);
+  addSpecLine('Dimensions', true);
+  addSpecLine(`L x W x H: ${specification.overallDimensions.length} x ${specification.overallDimensions.width} x ${specification.overallDimensions.height} mm`);
   
-  specY += specLineHeight * 1.5;
+  specY += specLineHeight * 0.5;
   
   // Classification section
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Classification', margin + 3, specY);
-  specY += specLineHeight;
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(`Type: ${specification.classification.type}`, margin + 3, specY);
-  specY += specLineHeight;
-  pdf.text(`Face: ${specification.classification.face}`, margin + 3, specY);
-  specY += specLineHeight;
-  pdf.text(`Entry: ${specification.classification.entry}`, margin + 3, specY);
+  addSpecLine('Classification', true);
+  addSpecLine(`Type: ${specification.classification.type}`);
+  addSpecLine(`Face: ${specification.classification.face}`);
+  addSpecLine(`Entry: ${specification.classification.entry}`);
   
-  specY += specLineHeight * 1.5;
+  specY += specLineHeight * 0.5;
   
   // Material section
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Materials', margin + 3, specY);
-  specY += specLineHeight;
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(`Lumber: ${specification.materials.lumberId}`, margin + 3, specY);
-  specY += specLineHeight;
-  pdf.text(`Surface: ${specification.materials.surface}`, margin + 3, specY);
+  addSpecLine('Materials', true);
+  addSpecLine(`Lumber: ${specification.materials.lumberId}`);
+  addSpecLine(`Surface: ${specification.materials.surface}`);
   
-  specY += specLineHeight * 1.5;
+  specY += specLineHeight * 0.5;
   
   // Load capacity section
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Load Capacity', margin + 3, specY);
-  specY += specLineHeight;
-  pdf.setFont('helvetica', 'normal');
-  pdf.text(`Static: ${specification.materials.staticLoadCapacity} kg`, margin + 3, specY);
-  specY += specLineHeight;
-  pdf.text(`Dynamic: ${specification.materials.dynamicLoadCapacity} kg`, margin + 3, specY);
+  addSpecLine('Load Capacity', true);
+  addSpecLine(`Static: ${specification.materials.staticLoadCapacity} kg`);
+  addSpecLine(`Dynamic: ${specification.materials.dynamicLoadCapacity} kg`);
   
-  specY += specLineHeight * 1.5;
+  specY += specLineHeight * 0.5;
   
   // Component count section
-  pdf.setFont('helvetica', 'bold');
-  pdf.text('Components', margin + 3, specY);
-  specY += specLineHeight;
-  pdf.setFont('helvetica', 'normal');
+  addSpecLine('Components', true);
   VIEWS.forEach((view) => {
     const count = components[view].length;
-    pdf.text(`${VIEW_LABELS[view].label}: ${count}`, margin + 3, specY);
-    specY += specLineHeight;
+    addSpecLine(`${VIEW_LABELS[view].label}: ${count}`);
   });
   
   // === VIEW GRID (right side) ===
@@ -455,12 +527,16 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
   
   // Render each view
   for (const pos of viewPositions) {
+    // Check for view config overrides
+    const viewConfig = finalViewConfig?.[pos.view];
+    
     // Render view to image
     const viewDataUrl = await renderViewToDataUrl(
       components[pos.view],
       annotations[pos.view] || [],
       viewWidth * CANVAS_SCALE,
-      viewHeight * CANVAS_SCALE
+      viewHeight * CANVAS_SCALE,
+      viewConfig // Pass the config to the renderer
     );
     
     // View background
@@ -478,24 +554,16 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
     pdf.text(`${VIEW_LABELS[pos.view].label} (${VIEW_LABELS[pos.view].arrow})`, pos.x + 2, pos.y + 4.5);
     
     // Add the rendered view image
+    // If we have a custom config, the image is already scaled/positioned correctly within the canvas
+    // So we just draw it filling the view box (minus title bar)
     const imgY = pos.y + 7;
     const imgHeight = viewHeight - 8;
     const imgWidth = viewWidth - 2;
     
-    // Calculate aspect ratio to fit
-    const aspectRatio = A4_WIDTH_PX / A4_HEIGHT_PX;
-    let finalWidth = imgWidth;
-    let finalHeight = imgWidth / aspectRatio;
+    // If we have manual config, we trust the renderViewToDataUrl to have handled the layout
+    // If not, we do the aspect ratio fitting here (legacy behavior, but renderViewToDataUrl handles it now too)
     
-    if (finalHeight > imgHeight) {
-      finalHeight = imgHeight;
-      finalWidth = finalHeight * aspectRatio;
-    }
-    
-    const imgX = pos.x + 1 + (imgWidth - finalWidth) / 2;
-    const imgYCentered = imgY + (imgHeight - finalHeight) / 2;
-    
-    pdf.addImage(viewDataUrl, 'PNG', imgX, imgYCentered, finalWidth, finalHeight);
+    pdf.addImage(viewDataUrl, 'PNG', pos.x + 1, imgY, imgWidth, imgHeight);
   }
   
   // === FOOTER ===

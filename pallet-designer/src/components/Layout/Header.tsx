@@ -20,7 +20,9 @@ export function Header({ onOpenSpecs }: HeaderProps) {
     specification,
     canvas,
     toggleDarkMode,
-    finalCanvasExportFn
+    finalCanvasExportFn,
+    finalViewConfig,
+    finalTextConfig
   } = useStore();
   const { darkMode } = canvas;
   const canUndo = useCanUndo();
@@ -40,6 +42,8 @@ export function Header({ onOpenSpecs }: HeaderProps) {
         branding,
         currentPreset,
         finalCanvasDataUrl,
+        finalViewConfig,
+        finalTextConfig,
       });
     } catch (error) {
       console.error('Failed to export PDF:', error);

@@ -165,7 +165,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
     // Helper to create persisted text
     const createPersistedText = (id: string, text: string, options: any) => {
       const saved = finalTextConfig[id] || {};
-      const fabricText = new fabric.FabricText(saved.text || text, {
+      const fabricText = new fabric.Text(saved.text || text, {
         ...options,
         ...saved,
         data: { id },
@@ -378,7 +378,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
       canvas.add(titleBar);
 
       // View title
-      const viewTitle = new fabric.FabricText(`${VIEW_LABELS[pos.view].label} (${VIEW_LABELS[pos.view].arrow})`, {
+      const viewTitle = new fabric.Text(`${VIEW_LABELS[pos.view].label} (${VIEW_LABELS[pos.view].arrow})`, {
         left: pos.x + 2 * CANVAS_SCALE / 2,
         top: pos.y + 2.5 * CANVAS_SCALE / 2,
         fontSize: 7 * CANVAS_SCALE / 2,
@@ -412,17 +412,26 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
       // Helper to expand bounds
       const expandBounds = (x: number, y: number, w: number, h: number, rotation = 0) => {
         hasContent = true;
-        // Simple bounding box for rotated rect
         const rad = (rotation * Math.PI) / 180;
         const cos = Math.abs(Math.cos(rad));
         const sin = Math.abs(Math.sin(rad));
-        const width = w * cos + h * sin;
-        const height = w * sin + h * cos;
         
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x + width);
-        maxY = Math.max(maxY, y + height);
+        // Dimensions of the bounding box of the rotated object
+        const bbW = w * cos + h * sin;
+        const bbH = w * sin + h * cos;
+        
+        // Center of the object (x,y is unrotated top-left)
+        const cx = x + w / 2;
+        const cy = y + h / 2;
+        
+        // Top-left of the bounding box
+        const bbX = cx - bbW / 2;
+        const bbY = cy - bbH / 2;
+        
+        minX = Math.min(minX, bbX);
+        minY = Math.min(minY, bbY);
+        maxX = Math.max(maxX, bbX + bbW);
+        maxY = Math.max(maxY, bbY + bbH);
       };
 
       viewComponents.forEach((comp) => {
@@ -605,7 +614,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
           const relX = ann.position.x * CANVAS_SCALE - minX;
           const relY = ann.position.y * CANVAS_SCALE - minY;
           
-          const text = new fabric.FabricText(ann.text || 'Text', {
+          const text = new fabric.Text(ann.text || 'Text', {
             left: relX,
             top: relY,
             fontSize: (ann.fontSize || 14),
@@ -634,7 +643,7 @@ export function FinalCanvas({ containerSize, zoom, onContextMenu }: FinalCanvasP
           // Dimension text
           const midX = (x1 + x2) / 2;
           const midY = (y1 + y2) / 2;
-          const dimText = new fabric.FabricText(`${Math.round(ann.value)} mm`, {
+          const dimText = new fabric.Text(`${Math.round(ann.value)} mm`, {
             left: midX,
             top: midY - 6,
             fontSize: 9,
