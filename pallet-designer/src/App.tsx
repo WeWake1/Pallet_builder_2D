@@ -5,11 +5,18 @@ import { MultiViewCanvas } from './components/Canvas/MultiViewCanvas';
 import { MobileToolbar } from './components/Toolbar/MobileToolbar';
 import { SpecificationPanel } from './components/Specification/SpecificationPanel';
 import { PropertiesPanel } from './components/Sidebar/PropertiesPanel';
+import { LandingPage } from './components/Landing/LandingPage';
 import { isMobileDevice } from './utils/helpers';
 
 function App() {
   const isMobile = isMobileDevice();
   const [showSpecModal, setShowSpecModal] = useState(false);
+  const [showLanding, setShowLanding] = useState(true);
+
+  // Show landing page first
+  if (showLanding) {
+    return <LandingPage onTryNow={() => setShowLanding(false)} />;
+  }
 
   return (
     <div className="h-screen flex flex-col bg-[var(--color-background)] overflow-hidden">
