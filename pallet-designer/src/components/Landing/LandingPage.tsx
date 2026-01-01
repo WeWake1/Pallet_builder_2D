@@ -7,8 +7,7 @@ import {
   Layers, 
   Grid3X3, 
   Download, 
-  Move, 
-  Target
+  Move
 } from "lucide-react";
 
 interface LandingPageProps {
@@ -89,8 +88,8 @@ export function LandingPage({ onTryNow }: LandingPageProps) {
           className="w-full h-full border-none p-0 rounded-none"
           gridColor="#262626"
         >
-          <div className="flex flex-col items-center justify-center h-full gap-6 relative z-20">
-            <h2 className="text-4xl md:text-5xl font-bold text-white tracking-tight">
+          <div className="relative w-full h-full flex items-center justify-center z-20">
+            <h2 className="absolute top-16 text-4xl md:text-5xl font-bold text-white tracking-tight text-center px-4">
               Ready to start designing?
             </h2>
             <button
@@ -98,7 +97,6 @@ export function LandingPage({ onTryNow }: LandingPageProps) {
               className="group relative px-8 py-4 bg-white text-black rounded-full font-bold text-lg hover:scale-105 transition-transform duration-200"
             >
               <span className="flex items-center gap-2">
-                <Target className="w-5 h-5" />
                 Try Now
               </span>
             </button>
