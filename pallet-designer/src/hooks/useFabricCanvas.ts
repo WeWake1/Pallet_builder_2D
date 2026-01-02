@@ -446,13 +446,41 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       if (enabled && size > 0) {
         const gridSizePx = size * CANVAS_SCALE;
         
-        // Snap position to grid
-        const left = obj.left || 0;
-        const top = obj.top || 0;
+        // Snap based on the top-left edge of the bounding box
+        // This ensures objects with odd dimensions (like 14.5mm -> 29px) align their edges to the grid
+        
+        // Get dimensions
+        const w = obj.getScaledWidth();
+        const h = obj.getScaledHeight();
+        
+        // Calculate bounding box dimensions (handling rotation)
+        const angle = obj.angle || 0;
+        const rad = (angle * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(rad));
+        const sin = Math.abs(Math.sin(rad));
+        
+        const bboxW = w * cos + h * sin;
+        const bboxH = w * sin + h * cos;
+        
+        // Current center (since origin is center)
+        const centerX = obj.left || 0;
+        const centerY = obj.top || 0;
+        
+        // Calculate current top-left of bounding box
+        const currentLeft = centerX - bboxW / 2;
+        const currentTop = centerY - bboxH / 2;
+        
+        // Snap top-left to grid
+        const snappedLeft = Math.round(currentLeft / gridSizePx) * gridSizePx;
+        const snappedTop = Math.round(currentTop / gridSizePx) * gridSizePx;
+        
+        // Calculate new center position
+        const newCenterX = snappedLeft + bboxW / 2;
+        const newCenterY = snappedTop + bboxH / 2;
         
         obj.set({
-          left: Math.round(left / gridSizePx) * gridSizePx,
-          top: Math.round(top / gridSizePx) * gridSizePx,
+          left: newCenterX,
+          top: newCenterY,
         });
       }
     });
@@ -564,8 +592,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const originalHeight = obj.height || 0;
       
       // Calculate final dimensions
-      let finalWidth = originalWidth * scaleX;
-      let finalHeight = originalHeight * scaleY;
+      const finalWidth = originalWidth * scaleX;
+      const finalHeight = originalHeight * scaleY;
       
       // Convert center to top-left for storage
       let left = centerX - finalWidth / 2;
@@ -573,17 +601,32 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       
       // Snap to grid if enabled
       if (enabled && gridSizePx > 0) {
-        // Snap position (top-left)
-        left = Math.round(left / gridSizePx) * gridSizePx;
-        top = Math.round(top / gridSizePx) * gridSizePx;
+        // Snap based on bounding box top-left to ensure visual alignment
+        const angle = obj.angle || 0;
+        const rad = (angle * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(rad));
+        const sin = Math.abs(Math.sin(rad));
         
-        // Snap dimensions (minimum one grid cell)
-        finalWidth = Math.max(gridSizePx, Math.round(finalWidth / gridSizePx) * gridSizePx);
-        finalHeight = Math.max(gridSizePx, Math.round(finalHeight / gridSizePx) * gridSizePx);
+        const bboxW = finalWidth * cos + finalHeight * sin;
+        const bboxH = finalWidth * sin + finalHeight * cos;
         
-        // Recalculate center from snapped top-left
-        centerX = left + finalWidth / 2;
-        centerY = top + finalHeight / 2;
+        // Current top-left of bounding box
+        const currentBboxLeft = centerX - bboxW / 2;
+        const currentBboxTop = centerY - bboxH / 2;
+        
+        // Snap bounding box top-left
+        const snappedBboxLeft = Math.round(currentBboxLeft / gridSizePx) * gridSizePx;
+        const snappedBboxTop = Math.round(currentBboxTop / gridSizePx) * gridSizePx;
+        
+        // Recalculate center from snapped bounding box
+        centerX = snappedBboxLeft + bboxW / 2;
+        centerY = snappedBboxTop + bboxH / 2;
+        
+        // Recalculate unrotated top-left for storage
+        left = centerX - finalWidth / 2;
+        top = centerY - finalHeight / 2;
+        
+        // Note: We do NOT snap dimensions here anymore to preserve exact sizes (like 14.5mm)
       }
       
       // Convert to mm for store (store uses top-left position)

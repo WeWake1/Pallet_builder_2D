@@ -26,10 +26,10 @@ export const VIEW_LABELS: Record<ViewType, { label: string; arrow: string }> = {
 // These represent the component size on the canvas/paper, not real-world size
 // For a pallet drawing, think of this as 1:10 scale (10mm paper = 100mm real)
 export const DEFAULT_COMPONENT_DIMENSIONS: Record<string, { width: number; thickness: number; length: number }> = {
-  'top-board': { width: 10, thickness: 2, length: 100 },         // Top Board
-  'centre-board': { width: 15, thickness: 2, length: 120 },           // Centre Board
-  'block': { width: 15, thickness: 8, length: 15 },               // Block
-  'bottom-board': { width: 10, thickness: 2, length: 100 },       // Bottom Board
+  'top-board': { width: 10, thickness: 2, length: 120 },         // Top Board (100mm x 1200mm)
+  'centre-board': { width: 14.5, thickness: 2, length: 80 },     // Centre Board (145mm x 800mm)
+  'block': { width: 14.5, thickness: 8, length: 10 },            // Block (145mm x 100mm)
+  'bottom-board': { width: 10, thickness: 2, length: 120 },      // Bottom Board (100mm x 1200mm)
 };
 
 // GMA Notch specifications (in mm)

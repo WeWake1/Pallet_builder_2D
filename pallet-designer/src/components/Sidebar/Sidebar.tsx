@@ -32,7 +32,7 @@ export function Sidebar() {
       type,
       dimensions: { ...definition.defaultDimensions },
       position: { x: 50, y: 50 },
-      rotation: 0,
+      rotation: type === 'centre-board' ? 90 : 0,
       view: activeView,
     });
   };
