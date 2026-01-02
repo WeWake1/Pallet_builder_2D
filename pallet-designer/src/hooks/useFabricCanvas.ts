@@ -42,75 +42,11 @@ const createComponentShape = (
   component: PalletComponent,
   colors: { fill: string; stroke: string }
 ): fabric.FabricObject => {
-  const { dimensions, type, position, rotation } = component;
+  const { dimensions, position, rotation } = component;
   const w = dimensions.width * CANVAS_SCALE;
   const h = dimensions.length * CANVAS_SCALE;
   const x = position.x * CANVAS_SCALE;
   const y = position.y * CANVAS_SCALE;
-
-  // For notched blocks, create a custom shape (fork opening at bottom)
-  if (type === 'notched-block') {
-    const notchDepth = Math.min(38 * CANVAS_SCALE, h * 0.4); // 38mm or 40% of height
-    const notchOffset = w * 0.25; // Notch starts at 25% from each side
-    
-    // Create path for notched block shape (centered at origin)
-    const halfW = w / 2;
-    const halfH = h / 2;
-    const pathData = `
-      M ${-halfW} ${-halfH}
-      L ${halfW} ${-halfH}
-      L ${halfW} ${halfH - notchDepth}
-      L ${halfW - notchOffset} ${halfH - notchDepth}
-      L ${halfW - notchOffset} ${halfH}
-      L ${-halfW + notchOffset} ${halfH}
-      L ${-halfW + notchOffset} ${halfH - notchDepth}
-      L ${-halfW} ${halfH - notchDepth}
-      Z
-    `.trim().replace(/\s+/g, ' ');
-
-    const path = new fabric.Path(pathData, {
-      left: x + halfW,
-      top: y + halfH,
-      fill: colors.fill,
-      stroke: colors.stroke,
-      strokeWidth: 2,
-      angle: rotation,
-      originX: 'center',
-      originY: 'center',
-    });
-    
-    return path;
-  }
-
-  // For chamfered blocks, create a shape with chamfered corners (centered)
-  if (type === 'chamfered-block') {
-    const chamferSize = Math.min(10 * CANVAS_SCALE, Math.min(w, h) * 0.15); // 10mm or 15% of smallest dimension
-    const halfW = w / 2;
-    const halfH = h / 2;
-    
-    const pathData = `
-      M ${-halfW + chamferSize} ${-halfH}
-      L ${halfW - chamferSize} ${-halfH}
-      L ${halfW} ${-halfH + chamferSize}
-      L ${halfW} ${halfH - chamferSize}
-      L ${-halfW} ${halfH - chamferSize}
-      L ${-halfW} ${-halfH + chamferSize}
-      Z
-    `.trim().replace(/\s+/g, ' ');
-
-    const path = new fabric.Path(pathData, {
-      left: x + halfW,
-      top: y + halfH,
-      fill: colors.fill,
-      stroke: colors.stroke,
-      strokeWidth: 2,
-      angle: rotation,
-      originX: 'center',
-      originY: 'center',
-    });
-    
-    return path;
-  }
 
   // Standard rectangle for other components (centered)
   return new fabric.Rect({

@@ -47,55 +47,21 @@ async function renderViewToDataUrl(
     const centerY = comp.position.y * CANVAS_SCALE + h / 2;
     const rotation = comp.rotation || 0;
 
-    let shape: fabric.FabricObject;
+    const shape = new fabric.Rect({
+      left: centerX,
+      top: centerY,
+      width: w,
+      height: h,
+      fill: colors.fill,
+      stroke: colors.stroke,
+      strokeWidth: 1,
+      originX: 'center',
+      originY: 'center',
+      angle: rotation,
+      selectable: false,
+      evented: false,
+    });
     
-    if (comp.type === 'notched-block') {
-      const notchWidth = w * 0.3;
-      const notchHeight = h * 0.25;
-      const pathData = `M ${-w/2} ${-h/2} L ${w/2 - notchWidth} ${-h/2} L ${w/2 - notchWidth} ${-h/2 + notchHeight} L ${w/2} ${-h/2 + notchHeight} L ${w/2} ${h/2} L ${-w/2} ${h/2} Z`;
-      shape = new fabric.Path(pathData, {
-        left: centerX,
-        top: centerY,
-        fill: colors.fill,
-        stroke: colors.stroke,
-        strokeWidth: 1,
-        originX: 'center',
-        originY: 'center',
-        angle: rotation,
-        selectable: false,
-        evented: false,
-      });
-    } else if (comp.type === 'chamfered-block') {
-      const chamferSize = Math.min(w, h) * 0.2;
-      const pathData = `M ${-w/2 + chamferSize} ${-h/2} L ${w/2 - chamferSize} ${-h/2} L ${w/2} ${-h/2 + chamferSize} L ${w/2} ${h/2 - chamferSize} L ${w/2 - chamferSize} ${h/2} L ${-w/2 + chamferSize} ${h/2} L ${-w/2} ${h/2 - chamferSize} L ${-w/2} ${-h/2 + chamferSize} Z`;
-      shape = new fabric.Path(pathData, {
-        left: centerX,
-        top: centerY,
-        fill: colors.fill,
-        stroke: colors.stroke,
-        strokeWidth: 1,
-        originX: 'center',
-        originY: 'center',
-        angle: rotation,
-        selectable: false,
-        evented: false,
-      });
-    } else {
-      shape = new fabric.Rect({
-        left: centerX,
-        top: centerY,
-        width: w,
-        height: h,
-        fill: colors.fill,
-        stroke: colors.stroke,
-        strokeWidth: 1,
-        originX: 'center',
-        originY: 'center',
-        angle: rotation,
-        selectable: false,
-        evented: false,
-      });
-    }
     canvas.add(shape);
   });
 

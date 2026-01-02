@@ -1,18 +1,16 @@
 // Pallet Component Types
 export type ComponentType = 
-  | 'deck-board' 
-  | 'stringer' 
+  | 'top-board' 
+  | 'centre-board' 
   | 'block' 
-  | 'notched-block' 
-  | 'chamfered-block'
-  | 'lead-board';
+  | 'bottom-board';
 
 // Annotation types
 export type AnnotationType = 'text' | 'dimension' | 'callout';
 
 export type ViewType = 'top' | 'side' | 'end' | 'bottom';
 
-export type PalletPreset = 'euro-epal' | 'cp1' | 'cp2' | 'cp3' | 'cp4' | 'cp5' | 'cp6' | 'cp7' | 'cp8' | 'cp9' | 'gma' | 'custom';
+export type PalletPreset = 'euro-epal' | 'cp1' | 'gma' | 'custom';
 
 // Dimensions in millimeters
 export interface Dimensions {
