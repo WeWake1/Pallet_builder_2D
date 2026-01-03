@@ -581,7 +581,7 @@ export function MultiViewCanvas() {
             
             {/* Scrollable canvas area */}
             <div 
-              className="flex-1 overflow-auto flex items-center justify-center bg-[var(--color-background)]"
+              className="flex-1 overflow-auto flex bg-[var(--color-background)]"
               onClick={handleBackgroundClick}
               onScroll={(e) => {
                 const target = e.target as HTMLDivElement;
@@ -592,7 +592,7 @@ export function MultiViewCanvas() {
                 backgroundSize: '20px 20px',
               }}
             >
-              <div className="relative p-8">
+              <div className="relative p-8 m-auto">
                 {/* Canvas */}
                 <div
                   ref={canvasWrapperRef}

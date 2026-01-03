@@ -485,13 +485,16 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
 
-    // Handle object scaling - just update dimension label in real-time, no snapping during scale
+    // Handle object scaling - snap to grid when enabled
     canvas.on('object:scaling', (e) => {
       const obj = e.target;
       if (!obj) return;
       
       const data = getObjectData(obj);
       if (data?.isGrid || data?.isLabel) return;
+
+      const { enabled, size } = gridStateRef.current;
+      const gridSizePx = size * CANVAS_SCALE;
       
       // Handle dimension annotation - update text label in real-time
       if (data?.isAnnotation && data.annotationType === 'dimension' && obj instanceof fabric.Group) {
@@ -508,6 +511,36 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         const textObj = obj.getObjects().find((o) => o instanceof fabric.Text);
         if (textObj && textObj instanceof fabric.Text) {
           textObj.set({ text: `${newValueMm} mm` });
+        }
+        return;
+      }
+
+      // Snap scaling to grid
+      if (enabled && gridSizePx > 0) {
+        const scaleX = obj.scaleX || 1;
+        const scaleY = obj.scaleY || 1;
+        const originalWidth = obj.width || 0;
+        const originalHeight = obj.height || 0;
+
+        // Calculate current dimensions
+        const currentWidth = originalWidth * scaleX;
+        const currentHeight = originalHeight * scaleY;
+
+        // Snap dimensions to nearest grid step
+        // We use Math.max to ensure it doesn't snap to 0
+        const snappedWidth = Math.max(gridSizePx, Math.round(currentWidth / gridSizePx) * gridSizePx);
+        const snappedHeight = Math.max(gridSizePx, Math.round(currentHeight / gridSizePx) * gridSizePx);
+
+        // Apply snapped scale
+        // We only update the scale that is actually changing (based on the control being used)
+        // But for simplicity, we can update both if they are being scaled
+        
+        // Check which axis is being scaled (approximate)
+        if (Math.abs(scaleX - 1) > 0.001) {
+          obj.set({ scaleX: snappedWidth / originalWidth });
+        }
+        if (Math.abs(scaleY - 1) > 0.001) {
+          obj.set({ scaleY: snappedHeight / originalHeight });
         }
       }
     });
