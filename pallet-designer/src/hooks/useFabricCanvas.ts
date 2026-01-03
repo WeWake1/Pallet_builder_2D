@@ -76,6 +76,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   const captureHistoryRef = useRef<() => void>(() => {});
   const isUpdatingSelectionRef = useRef(false); // Prevent circular selection updates
   const isDraggingRef = useRef(false); // Track if we're currently dragging (for history capture)
+  const isScalingRef = useRef(false); // Track if we're currently resizing/scaling
   const selectedComponentIdsRef = useRef<string[]>([]);
   const selectedAnnotationIdRef = useRef<string | null>(null);
   // Track canvas version to force re-sync when canvas is recreated (e.g., after tab switch)
@@ -410,6 +411,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
     canvas.on('mouse:up', () => {
       isDraggingRef.current = false;
+      isScalingRef.current = false;
+    });
+
+    // Clear scaling flag when object modification ends
+    canvas.on('object:modified', () => {
+      isScalingRef.current = false;
     });
 
     // Handle object rotation - snap to 15 degree increments (like Excalidraw)
@@ -437,6 +444,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     canvas.on('object:moving', (e) => {
       const obj = e.target;
       if (!obj) return;
+
+      // If we're resizing, don't snap - Fabric fires moving events during scale
+      if (isScalingRef.current) return;
       
       const data = getObjectData(obj);
       // Don't snap grid lines, labels, or annotations
@@ -485,16 +495,14 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       }
     });
 
-    // Handle object scaling - snap to grid when enabled
+    // Handle object scaling
     canvas.on('object:scaling', (e) => {
+      isScalingRef.current = true;
       const obj = e.target;
       if (!obj) return;
       
       const data = getObjectData(obj);
       if (data?.isGrid || data?.isLabel) return;
-
-      const { enabled, size } = gridStateRef.current;
-      const gridSizePx = size * CANVAS_SCALE;
       
       // Handle dimension annotation - update text label in real-time
       if (data?.isAnnotation && data.annotationType === 'dimension' && obj instanceof fabric.Group) {
@@ -512,37 +520,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         if (textObj && textObj instanceof fabric.Text) {
           textObj.set({ text: `${newValueMm} mm` });
         }
-        return;
       }
-
-      // Snap scaling to grid
-      if (enabled && gridSizePx > 0) {
-        const scaleX = obj.scaleX || 1;
-        const scaleY = obj.scaleY || 1;
-        const originalWidth = obj.width || 0;
-        const originalHeight = obj.height || 0;
-
-        // Calculate current dimensions
-        const currentWidth = originalWidth * scaleX;
-        const currentHeight = originalHeight * scaleY;
-
-        // Snap dimensions to nearest grid step
-        // We use Math.max to ensure it doesn't snap to 0
-        const snappedWidth = Math.max(gridSizePx, Math.round(currentWidth / gridSizePx) * gridSizePx);
-        const snappedHeight = Math.max(gridSizePx, Math.round(currentHeight / gridSizePx) * gridSizePx);
-
-        // Apply snapped scale
-        // We only update the scale that is actually changing (based on the control being used)
-        // But for simplicity, we can update both if they are being scaled
-        
-        // Check which axis is being scaled (approximate)
-        if (Math.abs(scaleX - 1) > 0.001) {
-          obj.set({ scaleX: snappedWidth / originalWidth });
-        }
-        if (Math.abs(scaleY - 1) > 0.001) {
-          obj.set({ scaleY: snappedHeight / originalHeight });
-        }
-      }
+      // NO snapping during scaling! All snapping happens in object:modified.
     });
 
     // Handle object modification (drag, resize, rotate) - snap to grid at the end
