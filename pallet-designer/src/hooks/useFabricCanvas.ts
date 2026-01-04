@@ -520,8 +520,65 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         if (textObj && textObj instanceof fabric.Text) {
           textObj.set({ text: `${newValueMm} mm` });
         }
+        return;
       }
-      // NO snapping during scaling! All snapping happens in object:modified.
+
+      // Real-time grid snapping
+      const { enabled, size } = gridStateRef.current;
+      if (enabled && size > 0) {
+        const gridSizePx = size * CANVAS_SCALE;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const transform = (e as any).transform;
+        
+        if (!transform) return;
+        
+        const corner = transform.corner;
+        
+        // Map corner to opposite anchor point (the one that stays fixed)
+        const anchorMap: Record<string, {x: 'left' | 'center' | 'right', y: 'top' | 'center' | 'bottom'}> = {
+          tl: {x: 'right', y: 'bottom'},
+          mt: {x: 'center', y: 'bottom'},
+          tr: {x: 'left', y: 'bottom'},
+          ml: {x: 'right', y: 'center'},
+          mr: {x: 'left', y: 'center'},
+          bl: {x: 'right', y: 'top'},
+          mb: {x: 'center', y: 'top'},
+          br: {x: 'left', y: 'top'},
+        };
+        
+        const anchor = anchorMap[corner];
+        if (!anchor) return;
+        
+        // 1. Get current anchor position (before snapping)
+        const anchorPoint = obj.getPointByOrigin(anchor.x, anchor.y);
+        
+        // 2. Calculate snapped dimensions
+        const scaleX = obj.scaleX || 1;
+        const scaleY = obj.scaleY || 1;
+        const width = obj.width || 0;
+        const height = obj.height || 0;
+        
+        const currentWidth = width * scaleX;
+        const currentHeight = height * scaleY;
+        
+        const snappedWidth = Math.max(gridSizePx, Math.round(currentWidth / gridSizePx) * gridSizePx);
+        const snappedHeight = Math.max(gridSizePx, Math.round(currentHeight / gridSizePx) * gridSizePx);
+        
+        const newScaleX = snappedWidth / width;
+        const newScaleY = snappedHeight / height;
+        
+        // 3. Apply snapped scale
+        if (corner === 'ml' || corner === 'mr') {
+           obj.set('scaleX', newScaleX);
+        } else if (corner === 'mt' || corner === 'mb') {
+           obj.set('scaleY', newScaleY);
+        } else {
+           obj.set({ scaleX: newScaleX, scaleY: newScaleY });
+        }
+        
+        // 4. Restore anchor position
+        obj.setPositionByOrigin(anchorPoint, anchor.x, anchor.y);
+      }
     });
 
     // Handle object modification (drag, resize, rotate) - snap to grid at the end
