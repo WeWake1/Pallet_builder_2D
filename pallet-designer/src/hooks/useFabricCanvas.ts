@@ -57,6 +57,9 @@ const createComponentShape = (
     fill: colors.fill,
     stroke: colors.stroke,
     strokeWidth: 2,
+    strokeUniform: true, // Ensure stroke width stays constant during resizing
+    noScaleCache: false, // Force redraw during scaling
+    paintFirst: 'stroke', // Render stroke behind fill to prevent overlap issues
     angle: rotation,
     originX: 'center',
     originY: 'center',
@@ -163,6 +166,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       transparentCorners: false,
       borderColor: '#1e7ac9',
       borderScaleFactor: 2,
+      strokeUniform: true, // Ensure stroke width doesn't scale with the object
+      noScaleCache: false, // Force redraw during scaling to prevent artifacts
     });
 
     fabricRef.current = canvas;
