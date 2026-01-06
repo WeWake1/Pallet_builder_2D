@@ -1723,6 +1723,54 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     }
   }, [selectedComponentIds, selectedAnnotationId]);
 
+  // Handle keyboard navigation (arrow keys) to move objects
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      const activeObject = canvas.getActiveObject();
+      if (!activeObject) return;
+
+      // Only handle arrow keys
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+
+      // Don't intercept arrow keys if editing text
+      if (activeObject instanceof fabric.IText && activeObject.isEditing) return;
+
+      e.preventDefault();
+
+      const { enabled, size } = gridStateRef.current;
+      // Step size: 1 grid unit if grid enabled, 1px if disabled (for fine adjustments)
+      const step = (enabled && size > 0) ? (size * CANVAS_SCALE) : 1;
+      
+      let dx = 0;
+      let dy = 0;
+
+      switch (e.key) {
+        case 'ArrowUp': dy = -step; break;
+        case 'ArrowDown': dy = step; break;
+        case 'ArrowLeft': dx = -step; break;
+        case 'ArrowRight': dx = step; break;
+      }
+
+      if (dx !== 0 || dy !== 0) {
+        activeObject.set({
+          left: (activeObject.left || 0) + dx,
+          top: (activeObject.top || 0) + dy
+        });
+        activeObject.setCoords();
+        canvas.requestRenderAll();
+        
+        // Trigger modified event to update store/history
+        canvas.fire('object:modified', { target: activeObject });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return fabricRef;
 }
 
