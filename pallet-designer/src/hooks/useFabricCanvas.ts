@@ -1763,6 +1763,10 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         canvas.requestRenderAll();
         
         // Trigger modified event to update store/history
+        // Fire on object to trigger object-specific listeners (Annotations)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (activeObject as any).fire('modified');
+        // Fire on canvas to trigger global listeners (Components)
         canvas.fire('object:modified', { target: activeObject });
       }
     };
