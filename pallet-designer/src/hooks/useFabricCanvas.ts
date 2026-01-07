@@ -37,6 +37,24 @@ const setObjectData = (obj: fabric.FabricObject, data: ComponentData): void => {
   (obj as unknown as { data: ComponentData }).data = data;
 };
 
+// Helper for pixel-perfect alignment (fixes blurring on odd-width components like 14.5mm)
+const getCrispPosition = (left: number, top: number, width: number, height: number, angle: number) => {
+  // Determine visual dimensions based on rotation
+  const isRotated90 = Math.abs(Math.round(angle) % 180) === 90;
+  // If rotated 90, width acts as visual height, length (height) acts as visual width
+  const visualWidth = isRotated90 ? height : width;
+  const visualHeight = isRotated90 ? width : height;
+
+  // Adjust center to ensure edges land on full pixels
+  // If dimension is even, center should be integer (e.g. 100.0) -> edges at 50, 150
+  // If dimension is odd, center should be x.5 (e.g. 100.5) -> edges at 50, 151
+  // Note: 'left' and 'top' passed here are center coordinates
+  const targetLeft = (visualWidth % 2 !== 0) ? Math.floor(left) + 0.5 : Math.round(left);
+  const targetTop = (visualHeight % 2 !== 0) ? Math.floor(top) + 0.5 : Math.round(top);
+
+  return { x: targetLeft, y: targetTop };
+};
+
 // Create a pallet component shape (with optional notch or chamfer)
 const createComponentShape = (
   component: PalletComponent,
@@ -48,18 +66,21 @@ const createComponentShape = (
   const x = position.x * CANVAS_SCALE;
   const y = position.y * CANVAS_SCALE;
 
+  // Calculate crisp center position
+  const { x: left, y: top } = getCrispPosition(x + w / 2, y + h / 2, w, h, rotation);
+
   // Standard rectangle for other components (centered)
   return new fabric.Rect({
-    left: x + w / 2,
-    top: y + h / 2,
+    left,
+    top,
     width: w,
     height: h,
     fill: colors.fill,
     stroke: colors.stroke,
     strokeWidth: 2,
     strokeUniform: true, // Ensure stroke width stays constant during resizing
-    noScaleCache: false, // Force redraw during scaling
-    paintFirst: 'stroke', // Render stroke behind fill to prevent overlap issues
+    noScaleCache: true, // Force redraw during scaling (fix stretching)
+    strokeLineJoin: 'miter', // Sharp corners
     angle: rotation,
     originX: 'center',
     originY: 'center',
@@ -700,13 +721,15 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         left = centerX - finalWidth / 2;
         top = centerY - finalHeight / 2;
         
-        // Note: We do NOT snap dimensions here anymore to preserve exact sizes (like 14.5mm)
+        // Note: We do not snap dimensions here anymore to preserve exact sizes (like 14.5mm)
       }
       
       // Convert to mm for store (store uses top-left position)
+      // Use 2 decimal places to allow for sub-mm precision (needed for 14.5mm width objects to align to grid)
+      // 0.25mm = 0.5px. Integer mm forces 2px jumps, which misses the grid for odd-width objects centered.
       const newPosition = {
-        x: Math.round(left / CANVAS_SCALE),
-        y: Math.round(top / CANVAS_SCALE),
+        x: Number((left / CANVAS_SCALE).toFixed(2)),
+        y: Number((top / CANVAS_SCALE).toFixed(2)),
       };
       
       // For rectangles, update width/height. For paths, only update position and rotation
@@ -951,8 +974,15 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         });
         
         // Calculate target absolute position (Center)
-        const targetLeft = component.position.x * CANVAS_SCALE + w / 2;
-        const targetTop = component.position.y * CANVAS_SCALE + h / 2;
+        // Use crisp position logic to avoid blur on odd-width objects (like 14.5mm)
+        // especially when rotated 90 degrees.
+        const { x: targetLeft, y: targetTop } = getCrispPosition(
+          component.position.x * CANVAS_SCALE + w / 2,
+          component.position.y * CANVAS_SCALE + h / 2,
+          w,
+          h,
+          component.rotation
+        );
 
         // Check if we need to update position
         // If object is in a group/selection, we must compare absolute coordinates
@@ -972,8 +1002,11 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             Math.pow(currentCenter.y - targetTop, 2)
           );
           
-          // If position is very close (within 1px), skip update
-          if (dist < 1) {
+          // If position is distinct (tolerance 0.1px), update it.
+          // We use a low tolerance to enforce pixel-perfect alignment (crisp edges).
+          const tolerance = 0.1;
+          
+          if (dist < tolerance) {
             shouldUpdatePosition = false;
           } else {
             // If we must update, we have to be careful with the group
@@ -986,7 +1019,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             Math.pow((existingObj.left || 0) - targetLeft, 2) + 
             Math.pow((existingObj.top || 0) - targetTop, 2)
           );
-          if (dist < 1) shouldUpdatePosition = false;
+          if (dist < 0.1) shouldUpdatePosition = false;
         }
 
         if (shouldUpdatePosition) {
@@ -1131,8 +1164,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       textObj.on('modified', () => {
         const updates: Partial<TextAnnotation> = {
           position: {
-            x: Math.round((textObj.left || 0) / CANVAS_SCALE),
-            y: Math.round((textObj.top || 0) / CANVAS_SCALE),
+            x: Number(((textObj.left || 0) / CANVAS_SCALE).toFixed(2)),
+            y: Number(((textObj.top || 0) / CANVAS_SCALE).toFixed(2)),
           },
           rotation: Math.round(textObj.angle || 0),
         };
@@ -1312,12 +1345,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         // Persist to store in mm coordinates
         updateAnnotationRef.current(annotationId, {
           startPosition: {
-            x: Math.round(newStartPx.x / CANVAS_SCALE),
-            y: Math.round(newStartPx.y / CANVAS_SCALE),
+            x: Number((newStartPx.x / CANVAS_SCALE).toFixed(2)),
+            y: Number((newStartPx.y / CANVAS_SCALE).toFixed(2)),
           },
           endPosition: {
-            x: Math.round(newEndPx.x / CANVAS_SCALE),
-            y: Math.round(newEndPx.y / CANVAS_SCALE),
+            x: Number((newEndPx.x / CANVAS_SCALE).toFixed(2)),
+            y: Number((newEndPx.y / CANVAS_SCALE).toFixed(2)),
           },
           // keep value stable unless user explicitly edits it elsewhere
         });
@@ -1408,12 +1441,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         // Update anchor position (group origin is at anchor)
         updateAnnotationRef.current(annotationId, {
           anchorPosition: {
-            x: Math.round(groupLeft / CANVAS_SCALE),
-            y: Math.round(groupTop / CANVAS_SCALE),
+            x: Number((groupLeft / CANVAS_SCALE).toFixed(2)),
+            y: Number((groupTop / CANVAS_SCALE).toFixed(2)),
           },
           textPosition: {
-            x: Math.round((groupLeft + lineEndX) / CANVAS_SCALE),
-            y: Math.round((groupTop + lineEndY) / CANVAS_SCALE),
+            x: Number(((groupLeft + lineEndX) / CANVAS_SCALE).toFixed(2)),
+            y: Number(((groupTop + lineEndY) / CANVAS_SCALE).toFixed(2)),
           },
         });
       });
