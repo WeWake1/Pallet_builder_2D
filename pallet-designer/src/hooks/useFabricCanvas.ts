@@ -79,7 +79,7 @@ const createComponentShape = (
     stroke: colors.stroke,
     strokeWidth: 2,
     strokeUniform: true, // Ensure stroke width stays constant during resizing
-    noScaleCache: true, // Force redraw during scaling (fix stretching)
+    objectCaching: false, // Disable caching to fix border stretching/blurring during resize
     strokeLineJoin: 'miter', // Sharp corners
     angle: rotation,
     originX: 'center',
@@ -971,6 +971,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         existingObj.set({
           fill: colors.fill,
           stroke: colors.stroke,
+          // Ensure visual properties are up to date
+          strokeUniform: true,
+          objectCaching: false, // Fix border stretching on existing objects
         });
         
         // Calculate target absolute position (Center)
