@@ -507,17 +507,71 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         const currentTop = centerY - bboxH / 2;
         
         // Snap top-left to grid
-        const snappedLeft = Math.round(currentLeft / gridSizePx) * gridSizePx;
-        const snappedTop = Math.round(currentTop / gridSizePx) * gridSizePx;
+        // For odd number sized objects (like 29px width), we want them to sit on x.5 coordinates to be crisp
+        // But the snap logic forces them to x.0 coordinates (integers).
+        // This causes a 0.5px jump when we release (because syncComponents restores the x.5)
         
-        // Calculate new center position
-        const newCenterX = snappedLeft + bboxW / 2;
-        const newCenterY = snappedTop + bboxH / 2;
+        let snappedLeft = Math.round(currentLeft / gridSizePx) * gridSizePx;
+        let snappedTop = Math.round(currentTop / gridSizePx) * gridSizePx;
         
-        obj.set({
-          left: newCenterX,
-          top: newCenterY,
-        });
+        // Check if we need to offset for crispness (only if rotation is 0, 90, 180, 270)
+        // If the object's width/height in pixels is odd, we want the center to be at X.5, 
+        // which means the edges (top/left) should be Integers.
+        // Wait, currentLeft IS the edge. If currentLeft is Integer, then Center is Integer + 0.5.
+        // So actually, snapping currentLeft to Integer IS correct for odd widths.
+        
+        // However, if the object is EVEN width. Center is Integer. Left is Integer.
+        // So snapping Left to Integer is ALWAYS correct for edges.
+        
+        // Why does it jump?
+        // Maybe because `currentLeft` calculated here (from `centerX - bboxW/2`) has floating point noise?
+        // Or because `getCrispPosition` logic in syncComponents forces a specific rounding direction?
+        
+        // Let's ensure the snap is consistent with getCrispPosition.
+        // getCrispPosition logic:
+        // const targetLeft = (visualWidth % 2 !== 0) ? Math.floor(center) + 0.5 : Math.round(center);
+        
+        // Here we are setting Center X/Y.
+        // If bboxW is odd (29). snappedLeft is 100.
+        // newCenterX = 100 + 14.5 = 114.5.
+        // In Store: left = 114.5 - 14.5 = 100.
+        // syncComponents: center = 100 + 14.5 = 114.5.
+        // visualWidth = 29 (odd).
+        // targetLeft = Math.floor(114.5) + 0.5 = 114 + 0.5 = 114.5.
+        // It matches.
+        
+        // So why does single object jump?
+        // Maybe because `bboxW` calculation uses `w * cos ...` and involves trig math which introduces noise?
+        // Let's round bboxW/bboxH to nearest pixel before using it, assuming unrotated or 90-deg rotated objects.
+        const isRightAngle = Math.abs(angle % 90) < 0.1;
+        
+        if (isRightAngle) {
+             const roundedBboxW = Math.round(bboxW);
+             const roundedBboxH = Math.round(bboxH);
+             
+             const roundedCurrentLeft = centerX - roundedBboxW / 2;
+             const roundedCurrentTop = centerY - roundedBboxH / 2;
+             
+             snappedLeft = Math.round(roundedCurrentLeft / gridSizePx) * gridSizePx;
+             snappedTop = Math.round(roundedCurrentTop / gridSizePx) * gridSizePx;
+             
+             const newCenterX = snappedLeft + roundedBboxW / 2;
+             const newCenterY = snappedTop + roundedBboxH / 2;
+             
+             obj.set({
+               left: newCenterX,
+               top: newCenterY,
+             });
+        } else {
+             // Standard behavior for rotated objects
+             const newCenterX = snappedLeft + bboxW / 2;
+             const newCenterY = snappedTop + bboxH / 2;
+             
+             obj.set({
+               left: newCenterX,
+               top: newCenterY,
+             });
+        }
       }
     });
 
@@ -618,6 +672,30 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         captureHistoryRef.current();
 
         const activeSelection = target as fabric.ActiveSelection;
+
+        // Snap the entire selection to the grid first
+        const { enabled, size } = gridStateRef.current;
+        if (enabled && size > 0 && !isScalingRef.current) {
+          const gridSizePx = size * CANVAS_SCALE;
+          
+          // Use the selection's top-left corner for alignment
+          const left = activeSelection.left || 0;
+          const top = activeSelection.top || 0;
+          
+          const snappedLeft = Math.round(left / gridSizePx) * gridSizePx;
+          const snappedTop = Math.round(top / gridSizePx) * gridSizePx;
+          
+          // Only apply if there's a difference (prevents infinite loops if logic is fuzzy)
+          // We apply the snap visually to the activeSelection
+          if (Math.abs(left - snappedLeft) > 0.5 || Math.abs(top - snappedTop) > 0.5) {
+            activeSelection.set({
+              left: snappedLeft,
+              top: snappedTop
+            });
+            activeSelection.setCoords();
+          }
+        }
+
         const objects = activeSelection.getObjects();
         
         objects.forEach((obj) => {
@@ -625,6 +703,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           if (!data?.id || data.isLabel || data.isGrid || data.isAnnotation) return;
 
           // Calculate absolute coordinates
+          // Since we snapped the group, these world coordinates should now be aligned (if relative offsets were aligned)
           const matrix = obj.calcTransformMatrix();
           const options = fabric.util.qrDecompose(matrix);
           
@@ -635,6 +714,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           );
           
           // Calculate new dimensions
+          // Use precision to prevent 14.5mm -> 15mm or 14mm rounding errors
           const finalWidth = obj.width * options.scaleX;
           const finalHeight = obj.height * options.scaleY;
           
@@ -642,17 +722,19 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           const left = center.x - finalWidth / 2;
           const top = center.y - finalHeight / 2;
 
+          // Store with 2 decimal precision to support 0.5mm increments (e.g. 14.5 board centers)
           const newPosition = {
-            x: Math.round(left / CANVAS_SCALE),
-            y: Math.round(top / CANVAS_SCALE),
+            x: Number((left / CANVAS_SCALE).toFixed(2)),
+            y: Number((top / CANVAS_SCALE).toFixed(2)),
           };
           
           // Dimensions
           const isRect = obj instanceof fabric.Rect;
           
+          // Use precision for dimensions too
           const newDimensions = isRect ? {
-            width: Math.round(finalWidth / CANVAS_SCALE),
-            length: Math.round(finalHeight / CANVAS_SCALE),
+            width: Number((finalWidth / CANVAS_SCALE).toFixed(2)),
+            length: Number((finalHeight / CANVAS_SCALE).toFixed(2)),
             thickness: data.dimensions?.thickness || 22,
           } : data.dimensions;
 
@@ -728,6 +810,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Use 2 decimal places to allow for sub-mm precision (needed for 14.5mm width objects to align to grid)
       // 0.25mm = 0.5px. Integer mm forces 2px jumps, which misses the grid for odd-width objects centered.
       const newPosition = {
+        // Use precision to avoid floating point jitter on save
         x: Number((left / CANVAS_SCALE).toFixed(2)),
         y: Number((top / CANVAS_SCALE).toFixed(2)),
       };
