@@ -171,6 +171,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       selectionColor: 'rgba(30, 122, 201, 0.1)',  // Very light blue background
       selectionBorderColor: 'rgba(30, 122, 201, 0.6)',  // Semi-transparent border
       selectionLineWidth: 1,
+      // Enable shift/ctrl-click to add objects to selection
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      selectionKey: ['shiftKey', 'ctrlKey', 'metaKey'] as any,
     });
 
     console.log('[useFabricCanvas] Canvas created:', { 
@@ -279,11 +282,93 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     });
 
     // Handle selection - support multi-selection and grouping
-    const handleSelectionChange = (e: Partial<fabric.TEvent> & { selected?: fabric.FabricObject[] }) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handleSelectionChange = (e: any) => {
       if (isUpdatingSelectionRef.current) return;
       
-      const selected = e.selected || [];
+      // Get all currently selected objects from the event
+      const selected: fabric.FabricObject[] = e.selected || [];
       if (selected.length === 0) return;
+      
+      // Check if this is a shift/ctrl/cmd click for multi-selection
+      const mouseEvent = e.e as MouseEvent | TouchEvent | undefined;
+      const isMultiSelectKey = mouseEvent && 'shiftKey' in mouseEvent && 
+        (mouseEvent.shiftKey || mouseEvent.ctrlKey || mouseEvent.metaKey);
+      
+      // If multi-select key is held and we have a previous selection in the store,
+      // we need to ADD to that selection, not replace it
+      if (isMultiSelectKey && selected.length === 1) {
+        const { selectedComponentIds } = useStore.getState();
+        
+        if (selectedComponentIds.length > 0) {
+          // Get the newly clicked object
+          const newObj = selected[0];
+          const newObjData = getObjectData(newObj);
+          
+          // Skip if it's a grid or label
+          if (newObjData?.isGrid || newObjData?.isLabel) return;
+          
+          // Check if this object is already selected
+          if (newObjData?.id && selectedComponentIds.includes(newObjData.id)) {
+            // Object already selected - toggle it OFF (remove from selection)
+            const newIds = selectedComponentIds.filter(id => id !== newObjData.id);
+            
+            isUpdatingSelectionRef.current = true;
+            
+            if (newIds.length === 0) {
+              canvas.discardActiveObject();
+              selectComponent(null);
+            } else if (newIds.length === 1) {
+              // Find the object for single selection
+              const objToSelect = canvas.getObjects().find(o => {
+                const d = getObjectData(o);
+                return d?.id === newIds[0];
+              });
+              if (objToSelect) {
+                canvas.setActiveObject(objToSelect);
+              }
+              selectComponents(newIds);
+            } else {
+              // Multi-selection
+              const objectsToSelect = canvas.getObjects().filter(o => {
+                const d = getObjectData(o);
+                return d?.id && newIds.includes(d.id);
+              });
+              const activeSelection = new fabric.ActiveSelection(objectsToSelect, { canvas });
+              canvas.setActiveObject(activeSelection);
+              selectComponents(newIds);
+            }
+            
+            canvas.renderAll();
+            setTimeout(() => { isUpdatingSelectionRef.current = false; }, 50);
+            return;
+          }
+          
+          // Add new object to existing selection
+          if (newObjData?.id && !newObjData.isAnnotation) {
+            const newIds = [...selectedComponentIds, newObjData.id];
+            
+            isUpdatingSelectionRef.current = true;
+            
+            // Get all objects that should be selected
+            const objectsToSelect = canvas.getObjects().filter(o => {
+              const d = getObjectData(o);
+              return d?.id && newIds.includes(d.id) && !d.isGrid && !d.isLabel;
+            });
+            
+            if (objectsToSelect.length > 1) {
+              const activeSelection = new fabric.ActiveSelection(objectsToSelect, { canvas });
+              canvas.setActiveObject(activeSelection);
+            }
+            
+            canvas.renderAll();
+            selectComponents(newIds);
+            
+            setTimeout(() => { isUpdatingSelectionRef.current = false; }, 50);
+            return;
+          }
+        }
+      }
 
       const { components, annotations, canvas: canvasState } = useStore.getState();
       const view = canvasState.activeView;
@@ -421,17 +506,24 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
     // Handle clicking on empty canvas to deselect
     canvas.on('mouse:down', (e) => {
-      // If clicking on empty canvas (no target), clear selection
+      const mouseEvent = e.e as MouseEvent;
+      const isMultiSelectKey = mouseEvent.shiftKey || mouseEvent.ctrlKey || mouseEvent.metaKey;
+      
+      // If clicking on empty canvas (no target), clear selection (unless modifier key held)
       if (!e.target) {
-        canvas.discardActiveObject();
-        canvas.renderAll();
+        if (!isMultiSelectKey) {
+          canvas.discardActiveObject();
+          canvas.renderAll();
+        }
         return;
       }
       
-      const data = getObjectData(e.target);
-      // Only track dragging state
-      if (data?.id && !data.isGrid && !data.isLabel) {
-        isDraggingRef.current = true;
+      // Only track dragging state for valid objects
+      if (e.target) {
+        const data = getObjectData(e.target);
+        if (data?.id && !data.isGrid && !data.isLabel) {
+          isDraggingRef.current = true;
+        }
       }
     });
 
@@ -1796,6 +1888,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     const canvas = fabricRef.current;
     
     // Prevent circular updates
+    if (isUpdatingSelectionRef.current) return;
     isUpdatingSelectionRef.current = true;
     
     try {
@@ -1804,6 +1897,22 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           const data = getObjectData(o);
           return data?.id && selectedComponentIds.includes(data.id) && !data.isLabel && !data.isGrid;
         });
+        
+        // Check if current canvas selection already matches what we want
+        const activeObj = canvas.getActiveObject();
+        if (activeObj) {
+          const currentIds = activeObj instanceof fabric.ActiveSelection 
+            ? activeObj.getObjects().map(o => getObjectData(o)?.id).filter(Boolean)
+            : [getObjectData(activeObj)?.id].filter(Boolean);
+          
+          // If selections match, don't update to avoid interrupting user interaction
+          const selectionsMatch = currentIds.length === selectedComponentIds.length &&
+            currentIds.every(id => selectedComponentIds.includes(id as string));
+          
+          if (selectionsMatch) {
+            return;
+          }
+        }
         
         if (objectsToSelect.length === 1) {
           // Single selection
