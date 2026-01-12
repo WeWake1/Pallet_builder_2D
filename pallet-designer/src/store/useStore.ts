@@ -381,24 +381,52 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       const component = components[view].find((c) => c.id === id);
       if (component) {
         set({ clipboard: { ...component } });
+
+        // Cross-tab copy/paste: persist the last copied component.
+        // localStorage is shared across tabs of the same origin.
+        try {
+          localStorage.setItem('palletDesigner.clipboard.component', JSON.stringify(component));
+        } catch {
+          // Ignore storage failures (private mode / quota / disabled storage)
+        }
         break;
       }
     }
   },
 
-  pasteComponent: () => {
-    const { clipboard, canvas } = get();
+  pasteComponent: (targetPosition) => {
+    const { clipboard: inMemoryClipboard, canvas } = get();
+
+    // Prefer in-memory clipboard, fallback to cross-tab clipboard.
+    let clipboard = inMemoryClipboard;
+    if (!clipboard) {
+      try {
+        const raw = localStorage.getItem('palletDesigner.clipboard.component');
+        if (raw) clipboard = JSON.parse(raw);
+      } catch {
+        // Ignore parse/storage issues
+      }
+    }
     
     if (!clipboard) return;
+
+    // If a target is provided (mouse location in mm), center the pasted object there.
+    // Otherwise use a small offset so repeated paste doesn't stack perfectly.
+    const position = targetPosition
+      ? {
+          x: targetPosition.x - clipboard.dimensions.width / 2,
+          y: targetPosition.y - clipboard.dimensions.length / 2,
+        }
+      : {
+          x: clipboard.position.x + 20,
+          y: clipboard.position.y + 20,
+        };
     
     const newComponent: PalletComponent = {
       ...clipboard,
       id: generateId(),
       view: canvas.activeView,
-      position: {
-        x: clipboard.position.x + 20,
-        y: clipboard.position.y + 20,
-      },
+      position,
     };
     
     set((state) => ({
@@ -407,7 +435,8 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         [canvas.activeView]: [...state.components[canvas.activeView], newComponent],
       },
       selectedComponentIds: [newComponent.id],
-      clipboard: { ...clipboard, position: newComponent.position }, // Update clipboard position for next paste
+      // Only update clipboard position for cascading offset-paste behavior.
+      clipboard: targetPosition ? clipboard : { ...clipboard, position: newComponent.position },
       history: {
         past: [...state.history.past, { components: state.components, annotations: state.annotations }],
         future: [],

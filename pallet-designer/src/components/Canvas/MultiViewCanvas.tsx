@@ -256,7 +256,7 @@ export function MultiViewCanvas() {
       // Paste: Ctrl/Cmd + V
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
-        pasteComponent();
+        pasteComponent(cursorPositionRef.current || undefined);
         return;
       }
       
@@ -309,10 +309,17 @@ export function MultiViewCanvas() {
   }, []);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
+    // Trackpad pinch-to-zoom on macOS surfaces as a wheel event with ctrlKey=true.
+    // Keep this scoped to the artboard/workspace area via the onWheel binding.
+    if (e.ctrlKey) {
       e.preventDefault();
-      const delta = e.deltaY > 0 ? -ZOOM_LIMITS.step : ZOOM_LIMITS.step;
-      setZoom(zoom + delta);
+
+      // Use exponential scaling so pinch feels natural and supports smooth zoom.
+      // Negative deltaY should zoom in.
+      const nextZoom = zoom * Math.exp(-e.deltaY * 0.01);
+      const clamped = Math.max(ZOOM_LIMITS.min, Math.min(ZOOM_LIMITS.max, nextZoom));
+
+      setZoom(clamped);
     }
   }, [zoom, setZoom]);
 

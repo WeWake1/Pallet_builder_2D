@@ -79,7 +79,7 @@ export function ContextMenu({ x, y, canvasPos, componentId, annotationId, onClos
   };
 
   const handlePaste = () => {
-    pasteComponent();
+    pasteComponent(canvasPos);
     onClose();
   };
 

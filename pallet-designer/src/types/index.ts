@@ -224,7 +224,7 @@ export interface AppActions {
   removeFromSelection: (id: string) => void;
   duplicateComponent: (id: string, targetPosition?: { x: number; y: number }) => void;
   copyComponent: (id: string) => void;
-  pasteComponent: () => void;
+  pasteComponent: (targetPosition?: { x: number; y: number }) => void;
   groupSelection: () => void;
   ungroupSelection: () => void;
   
