@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import type { PalletComponent, ViewType, PalletSpecification, BrandingConfig, Annotation } from '../types';
-import { VIEW_LABELS, CANVAS_SCALE, COMPONENT_COLORS, A4_WIDTH_PX, A4_HEIGHT_PX } from '../constants';
+import { VIEW_LABELS, CANVAS_SCALE, COMPONENT_COLORS } from '../constants';
 import * as fabric from 'fabric';
 
 interface ExportOptions {
