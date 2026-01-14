@@ -215,8 +215,35 @@ export function MultiViewCanvas() {
         bringToFront,
         sendToBack,
         groupSelection,
-        ungroupSelection
+        ungroupSelection,
+        setActiveView,
+        selectComponents,
+        components
       } = useStore.getState();
+      
+      // View switching: Number keys 1-4
+      if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          setActiveView('top');
+          return;
+        }
+        if (e.key === '2') {
+          e.preventDefault();
+          setActiveView('side');
+          return;
+        }
+        if (e.key === '3') {
+          e.preventDefault();
+          setActiveView('end');
+          return;
+        }
+        if (e.key === '4') {
+          e.preventDefault();
+          setActiveView('bottom');
+          return;
+        }
+      }
       
       // Undo: Ctrl/Cmd + Z
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
@@ -253,10 +280,28 @@ export function MultiViewCanvas() {
         return;
       }
       
+      // Cut: Ctrl/Cmd + X
+      if ((e.ctrlKey || e.metaKey) && e.key === 'x' && selectedComponentIds.length > 0) {
+        e.preventDefault();
+        copyComponent(selectedComponentIds[0]);
+        selectedComponentIds.forEach((id) => deleteComponent(id));
+        return;
+      }
+      
       // Paste: Ctrl/Cmd + V
       if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
         e.preventDefault();
         pasteComponent(cursorPositionRef.current || undefined);
+        return;
+      }
+      
+      // Select All: Ctrl/Cmd + A
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        e.preventDefault();
+        const activeView = useStore.getState().canvas.activeView;
+        const viewComponents = components[activeView];
+        const allComponentIds = viewComponents.map(c => c.id);
+        selectComponents(allComponentIds);
         return;
       }
       

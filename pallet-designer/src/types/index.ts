@@ -281,6 +281,9 @@ export interface AppActions {
 
   // Reset
   resetCanvas: () => void;
+  
+  // Load state from saved project
+  loadState: (state: Partial<AppState>) => void;
 
   // Register final canvas export function
   setFinalCanvasExportFn: (fn: (() => string) | null) => void;

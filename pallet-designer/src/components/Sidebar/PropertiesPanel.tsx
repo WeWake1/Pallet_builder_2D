@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useStore, useSelectedComponent, useSelectedAnnotation } from '../../store/useStore';
 import { COMPONENT_COLORS, A4_WIDTH_MM, A4_HEIGHT_MM } from '../../constants';
 import type { Annotation, PalletComponent, ViewType } from '../../types';
+import { Keyboard } from 'lucide-react';
+import { KeyboardShortcutsModal } from '../UI/KeyboardShortcutsModal';
 
 // Preset color options
 const COLOR_PRESETS = [
@@ -26,9 +29,10 @@ const GRID_SIZE_OPTIONS = [
 // Canvas settings panel when nothing is selected
 function CanvasSettingsPanel() {
   const { canvas, toggleGrid, toggleSnap, setGridSize, toggleDarkMode } = useStore();
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   
   return (
-    <div className="p-4 space-y-4">
+    <div className="p-4 space-y-4">{/*  */}
       {/* Canvas Info */}
       <div>
         <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
@@ -132,6 +136,23 @@ function CanvasSettingsPanel() {
           💡 Tip: Select a component on the canvas to edit its properties
         </p>
       </div>
+
+      {/* Keyboard Shortcuts Button */}
+      <div className="pt-2 border-t border-[var(--color-border)]">
+        <button
+          onClick={() => setShowKeyboardShortcuts(true)}
+          className="w-full px-3 py-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-hover)] transition-colors flex items-center justify-center gap-2 text-sm text-[var(--color-text)]"
+        >
+          <Keyboard className="w-4 h-4" />
+          <span>Keyboard Shortcuts</span>
+        </button>
+      </div>
+
+      {/* Keyboard Shortcuts Modal */}
+      <KeyboardShortcutsModal 
+        isOpen={showKeyboardShortcuts} 
+        onClose={() => setShowKeyboardShortcuts(false)} 
+      />
     </div>
   );
 }

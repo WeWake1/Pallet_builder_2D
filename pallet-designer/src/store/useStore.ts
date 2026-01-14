@@ -951,6 +951,19 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       branding: get().branding, // Keep branding
     });
   },
+
+  // Load state from saved project
+  loadState: (state: Partial<AppState>) => {
+    set((currentState) => ({
+      ...currentState,
+      ...state,
+      // Reset history when loading
+      history: {
+        past: [],
+        future: [],
+      },
+    }));
+  },
 }));
 
 // Selectors

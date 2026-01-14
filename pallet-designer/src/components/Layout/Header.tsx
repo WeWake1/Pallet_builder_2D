@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useStore, useCanUndo, useCanRedo } from '../../store/useStore';
 import { PALLET_PRESETS } from '../../constants';
 import { exportToPDF } from '../../utils/pdfExport';
+import { Save, FolderOpen } from 'lucide-react';
+import { SaveLoadMenu } from '../UI/SaveLoadMenu';
 
 interface HeaderProps {
   onOpenSpecs?: () => void;
@@ -28,6 +30,7 @@ export function Header({ onOpenSpecs }: HeaderProps) {
   const canUndo = useCanUndo();
   const canRedo = useCanRedo();
   const [isExporting, setIsExporting] = useState(false);
+  const [showSaveLoadMenu, setShowSaveLoadMenu] = useState(false);
 
   const handleExportPDF = async () => {
     setIsExporting(true);
@@ -158,6 +161,15 @@ export function Header({ onOpenSpecs }: HeaderProps) {
           )}
         </button>
 
+        {/* Save/Load */}
+        <button
+          onClick={() => setShowSaveLoadMenu(!showSaveLoadMenu)}
+          className="w-9 h-9 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] flex items-center justify-center hover:bg-[var(--color-surface-hover)] transition-colors"
+          title="Save/Load Project"
+        >
+          {showSaveLoadMenu ? <FolderOpen className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+        </button>
+
         {/* Specifications */}
         <button
           onClick={onOpenSpecs}
@@ -188,6 +200,12 @@ export function Header({ onOpenSpecs }: HeaderProps) {
           <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'Export PDF'}</span>
         </button>
       </div>
+
+      {/* Modals */}
+      <SaveLoadMenu 
+        isOpen={showSaveLoadMenu} 
+        onClose={() => setShowSaveLoadMenu(false)} 
+      />
     </header>
   );
 }
