@@ -3,6 +3,12 @@ import * as fabric from 'fabric';
 import { useStore } from '../store/useStore';
 import { COMPONENT_COLORS, CANVAS_SCALE, A4_WIDTH_PX, A4_HEIGHT_PX } from '../constants';
 import type { PalletComponent, TextAnnotation, DimensionAnnotation, CalloutAnnotation } from '../types';
+import { 
+  calculateAlignmentGuides, 
+  createGuideLines, 
+  clearGuideLines,
+  applySnap 
+} from '../utils/alignmentGuides';
 
 // Module-level canvas reference for export functionality
 let globalFabricCanvas: fabric.Canvas | null = null;
@@ -530,11 +536,17 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     canvas.on('mouse:up', () => {
       isDraggingRef.current = false;
       isScalingRef.current = false;
+      // Clear alignment guides when mouse is released
+      clearGuideLines(canvas);
+      canvas.renderAll();
     });
 
     // Clear scaling flag when object modification ends
     canvas.on('object:modified', () => {
       isScalingRef.current = false;
+      // Clear alignment guides when modification is complete
+      clearGuideLines(canvas);
+      canvas.renderAll();
     });
 
     // Handle object rotation - snap to 15 degree increments (like Excalidraw)
@@ -558,7 +570,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       obj.set({ angle: snappedAngle % 360 });
     });
 
-    // Handle object moving - snap to grid when enabled
+    // Handle object moving - smart guides and grid snapping
     canvas.on('object:moving', (e) => {
       const obj = e.target;
       if (!obj) return;
@@ -570,99 +582,87 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Don't snap grid lines, labels, or annotations
       if (data?.isGrid || data?.isLabel || data?.isAnnotation) return;
       
-      const { enabled, size } = gridStateRef.current;
-      if (enabled && size > 0) {
-        const gridSizePx = size * CANVAS_SCALE;
+      // Clear previous guides
+      clearGuideLines(canvas);
+      
+      // Calculate alignment guides (Figma-style red lines)
+      const canvasWidth = canvas.width || 0;
+      const canvasHeight = canvas.height || 0;
+      const allObjects = canvas.getObjects();
+      
+      const snapResult = calculateAlignmentGuides(obj, allObjects, canvasWidth, canvasHeight);
+      
+      // Apply smart guide snapping first (takes priority over grid)
+      if (snapResult.guides.length > 0) {
+        applySnap(obj, snapResult);
         
-        // Snap based on the top-left edge of the bounding box
-        // This ensures objects with odd dimensions (like 14.5mm -> 29px) align their edges to the grid
-        
-        // Get dimensions
-        const w = obj.getScaledWidth();
-        const h = obj.getScaledHeight();
-        
-        // Calculate bounding box dimensions (handling rotation)
-        const angle = obj.angle || 0;
-        const rad = (angle * Math.PI) / 180;
-        const cos = Math.abs(Math.cos(rad));
-        const sin = Math.abs(Math.sin(rad));
-        
-        const bboxW = w * cos + h * sin;
-        const bboxH = w * sin + h * cos;
-        
-        // Current center (since origin is center)
-        const centerX = obj.left || 0;
-        const centerY = obj.top || 0;
-        
-        // Calculate current top-left of bounding box
-        const currentLeft = centerX - bboxW / 2;
-        const currentTop = centerY - bboxH / 2;
-        
-        // Snap top-left to grid
-        // For odd number sized objects (like 29px width), we want them to sit on x.5 coordinates to be crisp
-        // But the snap logic forces them to x.0 coordinates (integers).
-        // This causes a 0.5px jump when we release (because syncComponents restores the x.5)
-        
-        let snappedLeft = Math.round(currentLeft / gridSizePx) * gridSizePx;
-        let snappedTop = Math.round(currentTop / gridSizePx) * gridSizePx;
-        
-        // Check if we need to offset for crispness (only if rotation is 0, 90, 180, 270)
-        // If the object's width/height in pixels is odd, we want the center to be at X.5, 
-        // which means the edges (top/left) should be Integers.
-        // Wait, currentLeft IS the edge. If currentLeft is Integer, then Center is Integer + 0.5.
-        // So actually, snapping currentLeft to Integer IS correct for odd widths.
-        
-        // However, if the object is EVEN width. Center is Integer. Left is Integer.
-        // So snapping Left to Integer is ALWAYS correct for edges.
-        
-        // Why does it jump?
-        // Maybe because `currentLeft` calculated here (from `centerX - bboxW/2`) has floating point noise?
-        // Or because `getCrispPosition` logic in syncComponents forces a specific rounding direction?
-        
-        // Let's ensure the snap is consistent with getCrispPosition.
-        // getCrispPosition logic:
-        // const targetLeft = (visualWidth % 2 !== 0) ? Math.floor(center) + 0.5 : Math.round(center);
-        
-        // Here we are setting Center X/Y.
-        // If bboxW is odd (29). snappedLeft is 100.
-        // newCenterX = 100 + 14.5 = 114.5.
-        // In Store: left = 114.5 - 14.5 = 100.
-        // syncComponents: center = 100 + 14.5 = 114.5.
-        // visualWidth = 29 (odd).
-        // targetLeft = Math.floor(114.5) + 0.5 = 114 + 0.5 = 114.5.
-        // It matches.
-        
-        // So why does single object jump?
-        // Maybe because `bboxW` calculation uses `w * cos ...` and involves trig math which introduces noise?
-        // Let's round bboxW/bboxH to nearest pixel before using it, assuming unrotated or 90-deg rotated objects.
-        const isRightAngle = Math.abs(angle % 90) < 0.1;
-        
-        if (isRightAngle) {
-             const roundedBboxW = Math.round(bboxW);
-             const roundedBboxH = Math.round(bboxH);
-             
-             const roundedCurrentLeft = centerX - roundedBboxW / 2;
-             const roundedCurrentTop = centerY - roundedBboxH / 2;
-             
-             snappedLeft = Math.round(roundedCurrentLeft / gridSizePx) * gridSizePx;
-             snappedTop = Math.round(roundedCurrentTop / gridSizePx) * gridSizePx;
-             
-             const newCenterX = snappedLeft + roundedBboxW / 2;
-             const newCenterY = snappedTop + roundedBboxH / 2;
-             
-             obj.set({
-               left: newCenterX,
-               top: newCenterY,
-             });
-        } else {
-             // Standard behavior for rotated objects
-             const newCenterX = snappedLeft + bboxW / 2;
-             const newCenterY = snappedTop + bboxH / 2;
-             
-             obj.set({
-               left: newCenterX,
-               top: newCenterY,
-             });
+        // Draw guide lines
+        const guideLines = createGuideLines(canvas, snapResult.guides);
+        guideLines.forEach((line) => canvas.add(line));
+        canvas.renderAll();
+      } else {
+        // Fall back to grid snapping if enabled
+        const { enabled, size } = gridStateRef.current;
+        if (enabled && size > 0) {
+          const gridSizePx = size * CANVAS_SCALE;
+          
+          // Snap based on the top-left edge of the bounding box
+          // This ensures objects with odd dimensions (like 14.5mm -> 29px) align their edges to the grid
+          
+          // Get dimensions
+          const w = obj.getScaledWidth();
+          const h = obj.getScaledHeight();
+          
+          // Calculate bounding box dimensions (handling rotation)
+          const angle = obj.angle || 0;
+          const rad = (angle * Math.PI) / 180;
+          const cos = Math.abs(Math.cos(rad));
+          const sin = Math.abs(Math.sin(rad));
+          
+          const bboxW = w * cos + h * sin;
+          const bboxH = w * sin + h * cos;
+          
+          // Current center (since origin is center)
+          const centerX = obj.left || 0;
+          const centerY = obj.top || 0;
+          
+          // Calculate current top-left of bounding box
+          const currentLeft = centerX - bboxW / 2;
+          const currentTop = centerY - bboxH / 2;
+          
+          let snappedLeft = Math.round(currentLeft / gridSizePx) * gridSizePx;
+          let snappedTop = Math.round(currentTop / gridSizePx) * gridSizePx;
+          
+          // Round bbox for right-angle rotations to avoid floating point issues
+          const isRightAngle = Math.abs(angle % 90) < 0.1;
+          
+          if (isRightAngle) {
+               const roundedBboxW = Math.round(bboxW);
+               const roundedBboxH = Math.round(bboxH);
+               
+               const roundedCurrentLeft = centerX - roundedBboxW / 2;
+               const roundedCurrentTop = centerY - roundedBboxH / 2;
+               
+               snappedLeft = Math.round(roundedCurrentLeft / gridSizePx) * gridSizePx;
+               snappedTop = Math.round(roundedCurrentTop / gridSizePx) * gridSizePx;
+               
+               const newCenterX = snappedLeft + roundedBboxW / 2;
+               const newCenterY = snappedTop + roundedBboxH / 2;
+               
+               obj.set({
+                 left: newCenterX,
+                 top: newCenterY,
+               });
+          } else {
+               // Standard behavior for rotated objects
+               const newCenterX = snappedLeft + bboxW / 2;
+               const newCenterY = snappedTop + bboxH / 2;
+               
+               obj.set({
+                 left: newCenterX,
+                 top: newCenterY,
+               });
+          }
         }
       }
     });

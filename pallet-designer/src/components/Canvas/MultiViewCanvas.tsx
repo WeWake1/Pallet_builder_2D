@@ -7,6 +7,7 @@ import * as fabric from 'fabric';
 import { ContextMenu } from './ContextMenu';
 import { WorkspaceRuler } from './WorkspaceRuler';
 import { FinalCanvas } from './FinalCanvas';
+import { AlignmentTools } from '../UI/AlignmentTools';
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
 const RULER_SIZE = 24; // Must match WorkspaceRuler
@@ -125,6 +126,7 @@ export function MultiViewCanvas() {
   const cursorPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [, setScrollOffset] = useState({ x: 0, y: 0 });
   const viewComponents = useActiveViewComponents();
+  const [fabricCanvas, setFabricCanvas] = useState<fabric.Canvas | null>(null);
 
   const canvasWidth = A4_WIDTH_PX;
   const canvasHeight = A4_HEIGHT_PX;
@@ -154,11 +156,18 @@ export function MultiViewCanvas() {
     };
   }, [containerSize, zoom, canvasWidth]);
 
-  useFabricCanvas({
+  const fabricRef = useFabricCanvas({
     canvasRef,
     width: canvasWidth,
     height: canvasHeight,
   });
+
+  // Update fabric canvas state when ref changes
+  useEffect(() => {
+    if (fabricRef.current) {
+      setFabricCanvas(fabricRef.current);
+    }
+  }, [fabricRef]);
 
   useEffect(() => {
     const updateSize = () => {
@@ -671,6 +680,11 @@ export function MultiViewCanvas() {
                       height={canvasHeight}
                       style={{ display: 'block' }}
                     />
+                  </div>
+
+                  {/* Alignment Tools - floating toolbar */}
+                  <div className="absolute top-4 right-4 z-10">
+                    <AlignmentTools fabricCanvas={fabricCanvas} />
                   </div>
 
                   {isDragOver && (
