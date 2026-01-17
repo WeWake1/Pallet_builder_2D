@@ -8,7 +8,7 @@ import type {
   BrandingConfig,
   Annotation
 } from '../types';
-import { DEFAULT_GRID_SIZE, DEFAULT_LOAD_CAPACITIES, DEFAULT_TOLERANCES } from '../constants';
+import { DEFAULT_GRID_SIZE, DEFAULT_LOAD_CAPACITIES, DEFAULT_TOLERANCES, PASTE_OFFSET } from '../constants';
 import { getPresetComponents, getPresetDimensions } from '../data/presets';
 
 // Generate unique ID
@@ -341,8 +341,8 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
         // If target position is provided, center the component at that position
         // Otherwise use the default offset
         let position = {
-          x: component.position.x + 20,
-          y: component.position.y + 20,
+          x: component.position.x + PASTE_OFFSET,
+          y: component.position.y + PASTE_OFFSET,
         };
 
         if (targetPosition) {
@@ -418,8 +418,8 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
           y: targetPosition.y - clipboard.dimensions.length / 2,
         }
       : {
-          x: clipboard.position.x + 20,
-          y: clipboard.position.y + 20,
+          x: clipboard.position.x + PASTE_OFFSET,
+          y: clipboard.position.y + PASTE_OFFSET,
         };
     
     const newComponent: PalletComponent = {
@@ -469,21 +469,21 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
       duplicated = {
         ...ann,
         id: newId,
-        position: { x: ann.position.x + 20, y: ann.position.y + 20 },
+        position: { x: ann.position.x + PASTE_OFFSET, y: ann.position.y + PASTE_OFFSET },
       };
     } else if (ann.type === 'dimension') {
       duplicated = {
         ...ann,
         id: newId,
-        startPosition: { x: ann.startPosition.x + 20, y: ann.startPosition.y + 20 },
-        endPosition: { x: ann.endPosition.x + 20, y: ann.endPosition.y + 20 },
+        startPosition: { x: ann.startPosition.x + PASTE_OFFSET, y: ann.startPosition.y + PASTE_OFFSET },
+        endPosition: { x: ann.endPosition.x + PASTE_OFFSET, y: ann.endPosition.y + PASTE_OFFSET },
       };
     } else {
       duplicated = {
         ...ann,
         id: newId,
-        anchorPosition: { x: ann.anchorPosition.x + 20, y: ann.anchorPosition.y + 20 },
-        textPosition: { x: ann.textPosition.x + 20, y: ann.textPosition.y + 20 },
+        anchorPosition: { x: ann.anchorPosition.x + PASTE_OFFSET, y: ann.anchorPosition.y + PASTE_OFFSET },
+        textPosition: { x: ann.textPosition.x + PASTE_OFFSET, y: ann.textPosition.y + PASTE_OFFSET },
       };
     }
 

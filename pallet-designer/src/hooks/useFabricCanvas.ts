@@ -1,14 +1,8 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { useStore } from '../store/useStore';
-import { COMPONENT_COLORS, CANVAS_SCALE, A4_WIDTH_PX, A4_HEIGHT_PX } from '../constants';
+import { COMPONENT_COLORS, CANVAS_SCALE, A4_WIDTH_PX, A4_HEIGHT_PX, ROTATION_SNAP_ANGLE, MAJOR_GRID_INTERVAL } from '../constants';
 import type { PalletComponent, TextAnnotation, DimensionAnnotation, CalloutAnnotation } from '../types';
-import { 
-  calculateAlignmentGuides, 
-  createGuideLines, 
-  clearGuideLines,
-  applySnap 
-} from '../utils/alignmentGuides';
 
 // Module-level canvas reference for export functionality
 let globalFabricCanvas: fabric.Canvas | null = null;
@@ -101,6 +95,7 @@ interface UseFabricCanvasProps {
 
 export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasProps) {
   const fabricRef = useRef<fabric.Canvas | null>(null);
+  const [canvasInstance, setCanvasInstance] = useState<fabric.Canvas | null>(null);
   const gridStateRef = useRef<{ enabled: boolean; size: number }>({ enabled: false, size: 10 });
   const updateAnnotationRef = useRef<(id: string, updates: Partial<TextAnnotation | DimensionAnnotation | CalloutAnnotation>) => void>(() => {});
   const captureHistoryRef = useRef<() => void>(() => {});
@@ -147,15 +142,22 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
   // Initialize canvas
   useEffect(() => {
-    console.log('[useFabricCanvas] Init effect running', { 
-      hasCanvasRef: !!canvasRef.current, 
-      hasFabricRef: !!fabricRef.current 
-    });
-    
-    if (!canvasRef.current) return;
+    // If canvas element not ready, set up a retry mechanism
+    if (!canvasRef.current) {
+      const retryInterval = setInterval(() => {
+        if (canvasRef.current && !fabricRef.current) {
+          clearInterval(retryInterval);
+          // Force re-run of this effect by updating a dummy state
+          setCanvasInstance(null); // This will trigger the component to re-check
+        }
+      }, 100);
+      return () => clearInterval(retryInterval);
+    }
 
     // If we already have a fabric instance for this exact element, don't recreate
+    // But DO ensure canvasInstance state is set (might be stale after HMR)
     if (fabricRef.current && fabricRef.current.getElement() === canvasRef.current) {
+      setCanvasInstance(fabricRef.current);
       return;
     }
 
@@ -165,7 +167,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       fabricRef.current = null;
     }
 
-    console.log('[useFabricCanvas] Creating fabric canvas');
     const canvas = new fabric.Canvas(canvasRef.current, {
       width,
       height,
@@ -182,12 +183,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       selectionKey: ['shiftKey', 'ctrlKey', 'metaKey'] as any,
     });
 
-    console.log('[useFabricCanvas] Canvas created:', { 
-      canvasWidth: canvas.width, 
-      canvasHeight: canvas.height,
-      backgroundColor: canvas.backgroundColor
-    });
-
     // Configure default object styles
     fabric.FabricObject.prototype.set({
       cornerColor: '#1e7ac9',
@@ -202,6 +197,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
     fabricRef.current = canvas;
     globalFabricCanvas = canvas; // Set global reference for export
+    setCanvasInstance(canvas); 
     
     // Increment canvas version to trigger re-sync of components and annotations
     setCanvasVersion(v => v + 1);
@@ -536,23 +532,17 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     canvas.on('mouse:up', () => {
       isDraggingRef.current = false;
       isScalingRef.current = false;
-      // Clear alignment guides when mouse is released
-      clearGuideLines(canvas);
       canvas.renderAll();
     });
 
     // Clear scaling flag when object modification ends
     canvas.on('object:modified', () => {
       isScalingRef.current = false;
-      // Clear alignment guides when modification is complete
-      clearGuideLines(canvas);
       canvas.renderAll();
     });
 
-    // Handle object rotation - snap to 15 degree increments (like Excalidraw)
+    // Handle object rotation - snap to degree increments (like Excalidraw)
     // Snap only when shift is NOT held (shift allows free rotation)
-    const ROTATION_SNAP_ANGLE = 15; // degrees
-    
     canvas.on('object:rotating', (e) => {
       const obj = e.target;
       if (!obj) return;
@@ -564,13 +554,13 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // If shift is held, allow free rotation (no snap)
       if (shiftKey) return;
       
-      // Snap to nearest 15 degree increment
+      // Snap to nearest degree increment
       const currentAngle = obj.angle || 0;
       const snappedAngle = Math.round(currentAngle / ROTATION_SNAP_ANGLE) * ROTATION_SNAP_ANGLE;
       obj.set({ angle: snappedAngle % 360 });
     });
 
-    // Handle object moving - smart guides and grid snapping
+    // Handle object moving - grid snapping
     canvas.on('object:moving', (e) => {
       const obj = e.target;
       if (!obj) return;
@@ -582,87 +572,67 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Don't snap grid lines, labels, or annotations
       if (data?.isGrid || data?.isLabel || data?.isAnnotation) return;
       
-      // Clear previous guides
-      clearGuideLines(canvas);
-      
-      // Calculate alignment guides (Figma-style red lines)
-      const canvasWidth = canvas.width || 0;
-      const canvasHeight = canvas.height || 0;
-      const allObjects = canvas.getObjects();
-      
-      const snapResult = calculateAlignmentGuides(obj, allObjects, canvasWidth, canvasHeight);
-      
-      // Apply smart guide snapping first (takes priority over grid)
-      if (snapResult.guides.length > 0) {
-        applySnap(obj, snapResult);
+      // Grid snapping if enabled
+      const { enabled, size } = gridStateRef.current;
+      if (enabled && size > 0) {
+        const gridSizePx = size * CANVAS_SCALE;
         
-        // Draw guide lines
-        const guideLines = createGuideLines(canvas, snapResult.guides);
-        guideLines.forEach((line) => canvas.add(line));
-        canvas.renderAll();
-      } else {
-        // Fall back to grid snapping if enabled
-        const { enabled, size } = gridStateRef.current;
-        if (enabled && size > 0) {
-          const gridSizePx = size * CANVAS_SCALE;
-          
-          // Snap based on the top-left edge of the bounding box
-          // This ensures objects with odd dimensions (like 14.5mm -> 29px) align their edges to the grid
-          
-          // Get dimensions
-          const w = obj.getScaledWidth();
-          const h = obj.getScaledHeight();
-          
-          // Calculate bounding box dimensions (handling rotation)
-          const angle = obj.angle || 0;
-          const rad = (angle * Math.PI) / 180;
-          const cos = Math.abs(Math.cos(rad));
-          const sin = Math.abs(Math.sin(rad));
-          
-          const bboxW = w * cos + h * sin;
-          const bboxH = w * sin + h * cos;
-          
-          // Current center (since origin is center)
-          const centerX = obj.left || 0;
-          const centerY = obj.top || 0;
-          
-          // Calculate current top-left of bounding box
-          const currentLeft = centerX - bboxW / 2;
-          const currentTop = centerY - bboxH / 2;
-          
-          let snappedLeft = Math.round(currentLeft / gridSizePx) * gridSizePx;
-          let snappedTop = Math.round(currentTop / gridSizePx) * gridSizePx;
-          
-          // Round bbox for right-angle rotations to avoid floating point issues
-          const isRightAngle = Math.abs(angle % 90) < 0.1;
-          
-          if (isRightAngle) {
-               const roundedBboxW = Math.round(bboxW);
-               const roundedBboxH = Math.round(bboxH);
-               
-               const roundedCurrentLeft = centerX - roundedBboxW / 2;
-               const roundedCurrentTop = centerY - roundedBboxH / 2;
-               
-               snappedLeft = Math.round(roundedCurrentLeft / gridSizePx) * gridSizePx;
-               snappedTop = Math.round(roundedCurrentTop / gridSizePx) * gridSizePx;
-               
-               const newCenterX = snappedLeft + roundedBboxW / 2;
-               const newCenterY = snappedTop + roundedBboxH / 2;
-               
-               obj.set({
-                 left: newCenterX,
-                 top: newCenterY,
-               });
-          } else {
-               // Standard behavior for rotated objects
-               const newCenterX = snappedLeft + bboxW / 2;
-               const newCenterY = snappedTop + bboxH / 2;
-               
-               obj.set({
-                 left: newCenterX,
-                 top: newCenterY,
-               });
-          }
+        // Snap based on the top-left edge of the bounding box
+        // This ensures objects with odd dimensions (like 14.5mm -> 29px) align their edges to the grid
+        
+        // Get dimensions
+        const w = obj.getScaledWidth();
+        const h = obj.getScaledHeight();
+        
+        // Calculate bounding box dimensions (handling rotation)
+        const angle = obj.angle || 0;
+        const rad = (angle * Math.PI) / 180;
+        const cos = Math.abs(Math.cos(rad));
+        const sin = Math.abs(Math.sin(rad));
+        
+        const bboxW = w * cos + h * sin;
+        const bboxH = w * sin + h * cos;
+        
+        // Current center (since origin is center)
+        const centerX = obj.left || 0;
+        const centerY = obj.top || 0;
+        
+        // Calculate current top-left of bounding box
+        const currentLeft = centerX - bboxW / 2;
+        const currentTop = centerY - bboxH / 2;
+        
+        let snappedLeft = Math.round(currentLeft / gridSizePx) * gridSizePx;
+        let snappedTop = Math.round(currentTop / gridSizePx) * gridSizePx;
+        
+        // Round bbox for right-angle rotations to avoid floating point issues
+        const isRightAngle = Math.abs(angle % 90) < 0.1;
+        
+        if (isRightAngle) {
+             const roundedBboxW = Math.round(bboxW);
+             const roundedBboxH = Math.round(bboxH);
+             
+             const roundedCurrentLeft = centerX - roundedBboxW / 2;
+             const roundedCurrentTop = centerY - roundedBboxH / 2;
+             
+             snappedLeft = Math.round(roundedCurrentLeft / gridSizePx) * gridSizePx;
+             snappedTop = Math.round(roundedCurrentTop / gridSizePx) * gridSizePx;
+             
+             const newCenterX = snappedLeft + roundedBboxW / 2;
+             const newCenterY = snappedTop + roundedBboxH / 2;
+             
+             obj.set({
+               left: newCenterX,
+               top: newCenterY,
+             });
+        } else {
+             // Standard behavior for rotated objects
+             const newCenterX = snappedLeft + bboxW / 2;
+             const newCenterY = snappedTop + bboxH / 2;
+             
+             obj.set({
+               left: newCenterX,
+               top: newCenterY,
+             });
         }
       }
     });
@@ -980,6 +950,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       canvas.dispose();
       fabricRef.current = null;
       globalFabricCanvas = null; // Clear global reference
+      setCanvasInstance(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canvasRef.current, canvasState.darkMode]);
@@ -993,11 +964,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
   // Draw grid when enabled
   useEffect(() => {
-    console.log('[useFabricCanvas] Grid effect running', { 
-      hasFabricRef: !!fabricRef.current,
-      gridEnabled: canvasState.gridEnabled
-    });
-    
     if (!fabricRef.current) return;
     
     const canvas = fabricRef.current;
@@ -1039,10 +1005,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       };
 
       // Major grid spacing (big squares)
-      const MAJOR_MM = 50;
       // Offset major grid so that a major line lands exactly on the far edge.
       // Example: 210mm => offset 10mm, so majors are at 10,60,110,160,210.
-      const majorOffsetY = ((paperHeightMm % MAJOR_MM) + MAJOR_MM) % MAJOR_MM;
+      const majorOffsetY = ((paperHeightMm % MAJOR_GRID_INTERVAL) + MAJOR_GRID_INTERVAL) % MAJOR_GRID_INTERVAL;
 
       // Draw vertical lines (NO major verticals - per UX request)
       const vCount = Math.floor(paperWidthMm / gridSizeMm);
@@ -1069,7 +1034,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const hCount = Math.floor(paperHeightMm / gridSizeMm);
       for (let i = 0; i <= hCount; i++) {
         const yMm = i * gridSizeMm;
-        const isMajor = ((yMm - majorOffsetY) % MAJOR_MM === 0);
+        const isMajor = ((yMm - majorOffsetY) % MAJOR_GRID_INTERVAL === 0);
         const strokeWidth = isMajor ? 1 : 0.5;
         const yPx = snapToDevicePixel(yMm * CANVAS_SCALE, strokeWidth);
         
@@ -1099,11 +1064,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       
       canvas.add(gridGroup);
       canvas.sendObjectToBack(gridGroup);
-      
-      console.log('[useFabricCanvas] Grid lines added:', gridLines.length);
     }
     
-    console.log('[useFabricCanvas] Grid effect complete, objects on canvas:', canvas.getObjects().length);
     canvas.renderAll();
   }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, width, height, canvasVersion]);
 
@@ -1777,16 +1739,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   // This ensures proper z-ordering: grid -> components -> annotations
   // Also re-syncs when canvasVersion changes (after canvas recreation, e.g., tab switch)
   useEffect(() => {
-    console.log('[useFabricCanvas] Sync effect running', { 
-      hasFabricRef: !!fabricRef.current,
-      activeView: canvasState.activeView,
-      componentCount: components[canvasState.activeView]?.length || 0,
-      annotationCount: annotations[canvasState.activeView]?.length || 0,
-      componentIds: components[canvasState.activeView]?.map(c => c.id),
-      annotationIds: annotations[canvasState.activeView]?.map(a => a.id),
-      canvasVersion
-    });
-    
     if (!fabricRef.current) return;
     
     const canvas = fabricRef.current;
@@ -1816,12 +1768,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const zA = getObjectData(a)?.zIndex || 0;
       const zB = getObjectData(b)?.zIndex || 0;
       return zA - zB;
-    });
-
-    console.log('[useFabricCanvas] Reordering canvas stack', {
-      gridCount: gridObjs.length,
-      contentCount: contentObjs.length,
-      order: contentObjs.map(o => ({ id: getObjectData(o)?.id, z: getObjectData(o)?.zIndex }))
     });
 
     isUpdatingSelectionRef.current = true;
@@ -2003,6 +1949,6 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  return fabricRef;
+  return canvasInstance;
 }
 

@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import type { PalletComponent, ViewType, PalletSpecification, BrandingConfig, Annotation } from '../types';
+import type { PalletComponent, ViewType, PalletSpecification, BrandingConfig, Annotation, FinalTextItemConfig } from '../types';
 import { VIEW_LABELS, CANVAS_SCALE, COMPONENT_COLORS } from '../constants';
 import * as fabric from 'fabric';
 
@@ -11,7 +11,7 @@ interface ExportOptions {
   currentPreset: string;
   finalCanvasDataUrl?: string | null;
   finalViewConfig?: Record<ViewType, { x: number; y: number; scale: number }>;
-  finalTextConfig?: Record<string, any>;
+  finalTextConfig?: Record<string, FinalTextItemConfig>;
 }
 
 const VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
@@ -327,8 +327,8 @@ export async function exportToPDF(options: ExportOptions): Promise<void> {
       
       return {
         text: override.text || defaultText,
-        x: override.left * scale,
-        y: override.top * scale,
+        x: override.left !== undefined ? override.left * scale : defaultX,
+        y: override.top !== undefined ? override.top * scale : defaultY,
         size: (override.scaleX || 1) * defaultSize, // Approximate font size scaling
         angle: override.angle || 0
       };

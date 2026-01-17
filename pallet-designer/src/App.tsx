@@ -6,6 +6,7 @@ import { MobileToolbar } from './components/Toolbar/MobileToolbar';
 import { SpecificationPanel } from './components/Specification/SpecificationPanel';
 import { PropertiesPanel } from './components/Sidebar/PropertiesPanel';
 import { LandingPage } from './components/Landing/LandingPage';
+import { ErrorBoundary } from './components/UI/ErrorBoundary';
 import { isMobileDevice } from './utils/helpers';
 
 function App() {
@@ -19,44 +20,52 @@ function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-[var(--color-background)] overflow-hidden">
-      {/* Header */}
-      <Header onOpenSpecs={() => setShowSpecModal(true)} />
-      
-      {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar - Components & Labels */}
-        {!isMobile && (
-          <aside className="w-56 border-r border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
-            <Sidebar />
-          </aside>
-        )}
+    <ErrorBoundary>
+      <div className="h-screen flex flex-col bg-[var(--color-background)] overflow-hidden">
+        {/* Header */}
+        <Header onOpenSpecs={() => setShowSpecModal(true)} />
         
-        {/* Canvas Area */}
-        <main className="flex-1 overflow-hidden">
-          <MultiViewCanvas />
-        </main>
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Sidebar - Components & Labels */}
+          {!isMobile && (
+            <aside className="w-56 border-r border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
+              <ErrorBoundary>
+                <Sidebar />
+              </ErrorBoundary>
+            </aside>
+          )}
+          
+          {/* Canvas Area */}
+          <main className="flex-1 overflow-hidden">
+            <ErrorBoundary>
+              <MultiViewCanvas />
+            </ErrorBoundary>
+          </main>
+          
+          {/* Right Sidebar - Properties Panel (always visible on desktop) */}
+          {!isMobile && (
+            <aside className="w-64 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
+              <ErrorBoundary>
+                <PropertiesPanel />
+              </ErrorBoundary>
+            </aside>
+          )}
+        </div>
         
-        {/* Right Sidebar - Properties Panel (always visible on desktop) */}
-        {!isMobile && (
-          <aside className="w-64 border-l border-[var(--color-border)] bg-[var(--color-surface)] overflow-y-auto">
-            <PropertiesPanel />
-          </aside>
+        {/* Mobile Bottom Toolbar */}
+        {isMobile && <MobileToolbar />}
+
+        {/* Specification Modal */}
+        {showSpecModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden">
+              <SpecificationPanel onClose={() => setShowSpecModal(false)} />
+            </div>
+          </div>
         )}
       </div>
-      
-      {/* Mobile Bottom Toolbar */}
-      {isMobile && <MobileToolbar />}
-
-      {/* Specification Modal */}
-      {showSpecModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-hidden">
-            <SpecificationPanel onClose={() => setShowSpecModal(false)} />
-          </div>
-        </div>
-      )}
-    </div>
+    </ErrorBoundary>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useStore } from '../../store/useStore';
-import { COMPONENT_DEFINITIONS, COMPONENT_COLORS } from '../../constants';
+import { COMPONENT_DEFINITIONS, COMPONENT_COLORS, DEFAULT_ELEMENT_POSITION } from '../../constants';
 import type { ComponentType, AnnotationType } from '../../types';
 
 type TabType = 'components' | 'annotations';
@@ -42,7 +42,7 @@ export function Sidebar() {
       addAnnotation({
         type: 'text',
         text: 'Label',
-        position: { x: 100, y: 100 },
+        position: { ...DEFAULT_ELEMENT_POSITION },
         fontSize: 12,
         fontWeight: 'normal',
         color: '#333333',
@@ -62,8 +62,8 @@ export function Sidebar() {
       addAnnotation({
         type: 'callout',
         text: 'Note',
-        anchorPosition: { x: 100, y: 100 },
-        textPosition: { x: 130, y: 80 },
+        anchorPosition: { ...DEFAULT_ELEMENT_POSITION },
+        textPosition: { x: DEFAULT_ELEMENT_POSITION.x + 30, y: DEFAULT_ELEMENT_POSITION.y - 20 },
         view: activeView,
       });
     }

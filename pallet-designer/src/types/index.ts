@@ -84,6 +84,17 @@ export interface CalloutAnnotation {
 // Union type for all annotations
 export type Annotation = TextAnnotation | DimensionAnnotation | CalloutAnnotation;
 
+// Configuration for text elements in the Final Tab
+export interface FinalTextItemConfig {
+  fontSize?: number;
+  left?: number;
+  top?: number;
+  scaleX?: number;
+  scaleY?: number;
+  angle?: number;
+  text?: string;
+}
+
 // Helper type for distributive Omit (works with union types)
 export type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 
@@ -200,7 +211,7 @@ export interface AppState {
   finalViewConfig: Record<ViewType, { x: number; y: number; scale: number }>;
   
   // Final Text Configuration (for persistence of Final Tab text edits)
-  finalTextConfig: Record<string, { fontSize?: number; left?: number; top?: number; scaleX?: number; scaleY?: number; angle?: number; text?: string }>;
+  finalTextConfig: Record<string, FinalTextItemConfig>;
 
   // Function to export the Final Canvas as an image (if available)
   finalCanvasExportFn: (() => string) | null;
@@ -277,7 +288,7 @@ export interface AppActions {
   
   // Final View Actions
   updateFinalViewConfig: (view: ViewType, config: { x: number; y: number; scale: number }) => void;
-  updateFinalTextConfig: (id: string, config: { fontSize?: number; left?: number; top?: number; scaleX?: number; scaleY?: number; angle?: number; text?: string }) => void;
+  updateFinalTextConfig: (id: string, config: FinalTextItemConfig) => void;
 
   // Reset
   resetCanvas: () => void;

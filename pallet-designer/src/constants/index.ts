@@ -13,6 +13,16 @@ export const A4_HEIGHT_PX = A4_HEIGHT_MM * CANVAS_SCALE;
 
 // Grid settings
 export const DEFAULT_GRID_SIZE = 5; // 5mm grid (finer for precision)
+export const MAJOR_GRID_INTERVAL = 50; // mm - interval for major grid lines
+
+// Rotation settings
+export const ROTATION_SNAP_ANGLE = 15; // degrees - snap increment when rotating objects
+
+// Paste/duplicate offset
+export const PASTE_OFFSET = 20; // pixels - offset when pasting/duplicating objects
+
+// Default positions for new elements
+export const DEFAULT_ELEMENT_POSITION = { x: 100, y: 100 }; // pixels
 
 // View labels
 export const VIEW_LABELS: Record<ViewType, { label: string; arrow: string }> = {

@@ -1,4 +1,4 @@
-import type { AppState } from '../types';
+import type { AppState, ViewType } from '../types';
 
 export interface ProjectMetadata {
   id: string;
@@ -14,13 +14,113 @@ export interface SavedProject {
 
 const STORAGE_KEY = 'pallet-designer-projects';
 const MAX_RECENT_PROJECTS = 10;
+const VALID_VIEWS: ViewType[] = ['top', 'side', 'end', 'bottom'];
+
+/**
+ * Validates that a value is a valid ProjectMetadata object
+ */
+function isValidMetadata(value: unknown): value is ProjectMetadata {
+  if (!value || typeof value !== 'object') return false;
+  const metadata = value as Record<string, unknown>;
+  return (
+    typeof metadata.id === 'string' &&
+    typeof metadata.name === 'string' &&
+    typeof metadata.timestamp === 'number' &&
+    (metadata.thumbnail === undefined || typeof metadata.thumbnail === 'string')
+  );
+}
+
+/**
+ * Validates that a value is a valid SavedProject object with required structure
+ */
+function isValidProject(value: unknown): value is SavedProject {
+  if (!value || typeof value !== 'object') return false;
+  const project = value as Record<string, unknown>;
+  
+  // Check metadata
+  if (!isValidMetadata(project.metadata)) return false;
+  
+  // Check state exists and is an object
+  if (!project.state || typeof project.state !== 'object') return false;
+  
+  const state = project.state as Record<string, unknown>;
+  
+  // If components exist, validate they are Record<ViewType, array>
+  if (state.components !== undefined) {
+    if (typeof state.components !== 'object' || state.components === null) return false;
+    const components = state.components as Record<string, unknown>;
+    for (const view of VALID_VIEWS) {
+      if (components[view] !== undefined && !Array.isArray(components[view])) {
+        return false;
+      }
+    }
+  }
+  
+  // If annotations exist, validate they are Record<ViewType, array>
+  if (state.annotations !== undefined) {
+    if (typeof state.annotations !== 'object' || state.annotations === null) return false;
+    const annotations = state.annotations as Record<string, unknown>;
+    for (const view of VALID_VIEWS) {
+      if (annotations[view] !== undefined && !Array.isArray(annotations[view])) {
+        return false;
+      }
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Sanitizes a project state to ensure it has required default values
+ */
+function sanitizeProjectState(state: Partial<AppState>): Partial<AppState> {
+  // Ensure components and annotations have all view keys
+  const components = { ...state.components } as Record<ViewType, unknown[]>;
+  const annotations = { ...state.annotations } as Record<ViewType, unknown[]>;
+  
+  for (const view of VALID_VIEWS) {
+    if (!Array.isArray(components[view])) {
+      components[view] = [];
+    }
+    if (!Array.isArray(annotations[view])) {
+      annotations[view] = [];
+    }
+  }
+  
+  return {
+    ...state,
+    components: components as AppState['components'],
+    annotations: annotations as AppState['annotations'],
+  };
+}
 
 // Get all saved projects from localStorage
 export function getRecentProjects(): SavedProject[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return [];
-    return JSON.parse(stored);
+    
+    const parsed = JSON.parse(stored);
+    
+    // Validate that parsed data is an array
+    if (!Array.isArray(parsed)) {
+      console.warn('Invalid projects data format, expected array');
+      return [];
+    }
+    
+    // Filter out invalid projects and sanitize valid ones
+    return parsed
+      .filter((item: unknown) => {
+        if (!isValidProject(item)) {
+          console.warn('Skipping invalid project:', item);
+          return false;
+        }
+        return true;
+      })
+      .map((project: SavedProject) => ({
+        ...project,
+        state: sanitizeProjectState(project.state),
+      }));
   } catch (error) {
     console.error('Failed to load recent projects:', error);
     return [];
@@ -116,16 +216,22 @@ export function importProjectFromFile(file: File): Promise<SavedProject> {
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        const project = JSON.parse(content) as SavedProject;
+        const parsed = JSON.parse(content);
         
-        // Validate project structure
-        if (!project.metadata || !project.state) {
-          reject(new Error('Invalid project file format'));
+        // Validate project structure using type guard
+        if (!isValidProject(parsed)) {
+          reject(new Error('Invalid project file format. File may be corrupted or from an incompatible version.'));
           return;
         }
         
+        // Sanitize the state to ensure all required fields exist
+        const project: SavedProject = {
+          metadata: parsed.metadata,
+          state: sanitizeProjectState(parsed.state),
+        };
+        
         resolve(project);
-      } catch (error) {
+      } catch {
         reject(new Error('Failed to parse project file'));
       }
     };
