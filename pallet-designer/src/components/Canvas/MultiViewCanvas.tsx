@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useStore, useActiveViewComponents } from '../../store/useStore';
 import { useFabricCanvas } from '../../hooks/useFabricCanvas';
-import { VIEW_LABELS, ZOOM_LIMITS, A4_WIDTH_PX, A4_HEIGHT_PX, COMPONENT_DEFINITIONS, CANVAS_SCALE, COMPONENT_COLORS } from '../../constants';
+import { VIEW_LABELS, ZOOM_LIMITS, A4_WIDTH_PX, A4_HEIGHT_PX, COMPONENT_DEFINITIONS, COMPONENT_COLORS } from '../../constants';
+import { realMmToPx, pxToRealMm } from '../../utils/helpers';
 import type { ViewType, ComponentType } from '../../types';
 import * as fabric from 'fabric';
 import { ContextMenu } from './ContextMenu';
@@ -19,18 +20,19 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
   // Use selectors to avoid unnecessary re-renders
   const viewComponents = useStore((state) => state.components[view]);
   const isDarkMode = useStore((state) => state.canvas.darkMode);
+  const drawingScale = useStore((state) => state.canvas.drawingScale);
 
   // Helper to render canvas content
-  const renderCanvas = useCallback((canvas: fabric.StaticCanvas, components: typeof viewComponents, darkMode: boolean) => {
+  const renderCanvas = useCallback((canvas: fabric.StaticCanvas, components: typeof viewComponents, darkMode: boolean, drawingScale: number) => {
     canvas.clear();
     canvas.backgroundColor = darkMode ? '#1e293b' : '#ffffff';
 
     components.forEach((comp) => {
       const colors = COMPONENT_COLORS[comp.type] || { fill: '#cccccc', stroke: '#999999' };
-      const w = comp.dimensions.width * CANVAS_SCALE;
-      const h = comp.dimensions.length * CANVAS_SCALE;
-      const x = comp.position.x * CANVAS_SCALE;
-      const y = comp.position.y * CANVAS_SCALE;
+      const w = realMmToPx(comp.dimensions.width, drawingScale);
+      const h = realMmToPx(comp.dimensions.length, drawingScale);
+      const x = realMmToPx(comp.position.x, drawingScale);
+      const y = realMmToPx(comp.position.y, drawingScale);
 
       const rect = new fabric.Rect({
         left: x + w / 2,
@@ -71,7 +73,7 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
     fabricRef.current = canvas;
     
     // Initial render
-    renderCanvas(canvas, viewComponents, isDarkMode);
+    renderCanvas(canvas, viewComponents, isDarkMode, drawingScale);
 
     return () => {
       canvas.dispose();
@@ -84,8 +86,8 @@ function ViewPreview({ view, isActive, onClick }: { view: ViewType; isActive: bo
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    renderCanvas(canvas, viewComponents, isDarkMode);
-  }, [viewComponents, isDarkMode, renderCanvas]);
+    renderCanvas(canvas, viewComponents, isDarkMode, drawingScale);
+  }, [viewComponents, isDarkMode, drawingScale, renderCanvas]);
 
   const scale = 0.12; // Small preview scale
 
@@ -400,12 +402,14 @@ export function MultiViewCanvas() {
     
     const canvasX = dropX / scale;
     const canvasY = dropY / scale;
-    
-    const xMm = Math.round(canvasX / CANVAS_SCALE);
-    const yMm = Math.round(canvasY / CANVAS_SCALE);
-    
-    const posX = Math.max(0, Math.min(210 - definition.defaultDimensions.width, xMm - definition.defaultDimensions.width / 2));
-    const posY = Math.max(0, Math.min(297 - definition.defaultDimensions.length, yMm - definition.defaultDimensions.length / 2));
+
+    const xMm = Math.round(pxToRealMm(canvasX, canvas.drawingScale));
+    const yMm = Math.round(pxToRealMm(canvasY, canvas.drawingScale));
+
+    const realW = 210 * canvas.drawingScale;
+    const realH = 297 * canvas.drawingScale;
+    const posX = Math.max(0, Math.min(realW - definition.defaultDimensions.width, xMm - definition.defaultDimensions.width / 2));
+    const posY = Math.max(0, Math.min(realH - definition.defaultDimensions.length, yMm - definition.defaultDimensions.length / 2));
 
     addComponent({
       type: componentType,
@@ -414,7 +418,7 @@ export function MultiViewCanvas() {
       rotation: 0,
       view: activeView,
     });
-  }, [addComponent, activeView, scale]);
+  }, [addComponent, activeView, scale, canvas.drawingScale]);
 
   // Handle mouse move on canvas for ruler tracking
   const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
@@ -424,14 +428,14 @@ export function MultiViewCanvas() {
     const rect = wrapper.getBoundingClientRect();
     const x = (e.clientX - rect.left) / (scale * zoom);
     const y = (e.clientY - rect.top) / (scale * zoom);
-    
-    // Convert to mm
-    const xMm = x / CANVAS_SCALE;
-    const yMm = y / CANVAS_SCALE;
-    
+
+    // Convert to real-world mm
+    const xMm = pxToRealMm(x, canvas.drawingScale);
+    const yMm = pxToRealMm(y, canvas.drawingScale);
+
     setCursorPosition({ x: xMm, y: yMm });
     cursorPositionRef.current = { x: xMm, y: yMm };
-  }, [scale, zoom]);
+  }, [scale, zoom, canvas.drawingScale]);
 
   const handleCanvasMouseLeave = useCallback(() => {
     setCursorPosition(null);
@@ -453,8 +457,8 @@ export function MultiViewCanvas() {
       const rect = wrapper.getBoundingClientRect();
       const x = (e.clientX - rect.left) / (scale * zoom);
       const y = (e.clientY - rect.top) / (scale * zoom);
-      const xMm = x / CANVAS_SCALE;
-      const yMm = y / CANVAS_SCALE;
+      const xMm = pxToRealMm(x, canvas.drawingScale);
+      const yMm = pxToRealMm(y, canvas.drawingScale);
       canvasPos = { x: xMm, y: yMm };
     }
     
@@ -465,7 +469,7 @@ export function MultiViewCanvas() {
       componentId,
       annotationId,
     });
-  }, [selectedComponentIds, selectedAnnotationId, scale, zoom]);
+  }, [selectedComponentIds, selectedAnnotationId, scale, zoom, canvas.drawingScale]);
 
   // Close context menu when clicking elsewhere
   const closeContextMenu = useCallback(() => {
@@ -614,11 +618,12 @@ export function MultiViewCanvas() {
                 canvasOffset={(workspaceSize.width > 0 ? workspaceSize.width - RULER_SIZE : containerSize.width - 100) / 2 - (displayWidth * zoom) / 2}
                 canvasSize={displayWidth * zoom}
                 zoom={scale}
-                cursorPosition={cursorPosition} 
+                drawingScale={canvas.drawingScale}
+                cursorPosition={cursorPosition}
               />
             </div>
           </div>
-          
+
           {/* Main workspace area with vertical ruler and canvas */}
           <div className="flex flex-1 overflow-hidden">
             {/* Vertical ruler */}
@@ -629,7 +634,8 @@ export function MultiViewCanvas() {
                 canvasOffset={(workspaceSize.height > 0 ? workspaceSize.height - RULER_SIZE : containerSize.height - 150) / 2 - (displayHeight * zoom) / 2}
                 canvasSize={displayHeight * zoom}
                 zoom={scale}
-                cursorPosition={cursorPosition} 
+                drawingScale={canvas.drawingScale}
+                cursorPosition={cursorPosition}
               />
             </div>
             
@@ -697,7 +703,7 @@ export function MultiViewCanvas() {
                 
                 {/* Paper size label */}
                 <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 text-xs text-[var(--color-text-muted)] whitespace-nowrap bg-[var(--color-background)] px-2 rounded">
-                  A4 (210 × 297 mm)
+                  A4 · Scale 1:{canvas.drawingScale} · {210 * canvas.drawingScale} × {297 * canvas.drawingScale} mm real
                 </div>
               </div>
             </div>

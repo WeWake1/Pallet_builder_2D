@@ -15,6 +15,21 @@ export const pixelsToMm = (pixels: number): number => {
 };
 
 /**
+ * Convert real-world millimeters to canvas pixels at a given drawing scale.
+ * px = realMm * CANVAS_SCALE / drawingScale  (e.g. 1200mm at 1:10 => 240px)
+ */
+export const realMmToPx = (mm: number, drawingScale: number): number => {
+  return (mm * CANVAS_SCALE) / drawingScale;
+};
+
+/**
+ * Convert canvas pixels back to real-world millimeters at a given drawing scale.
+ */
+export const pxToRealMm = (px: number, drawingScale: number): number => {
+  return (px / CANVAS_SCALE) * drawingScale;
+};
+
+/**
  * Snap a value to the nearest grid point
  */
 export const snapToGrid = (value: number, gridSize: number, enabled: boolean): number => {

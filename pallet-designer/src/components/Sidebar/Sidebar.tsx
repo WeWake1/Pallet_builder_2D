@@ -31,7 +31,7 @@ export function Sidebar() {
     addComponent({
       type,
       dimensions: { ...definition.defaultDimensions },
-      position: { x: 50, y: 50 },
+      position: { x: 200, y: 200 },
       rotation: type === 'centre-board' ? 90 : 0,
       view: activeView,
     });
@@ -52,9 +52,9 @@ export function Sidebar() {
     } else if (type === 'dimension') {
       addAnnotation({
         type: 'dimension',
-        startPosition: { x: 50, y: 150 },
-        endPosition: { x: 150, y: 150 },
-        value: 100,
+        startPosition: { x: 300, y: 800 },
+        endPosition: { x: 1300, y: 800 },
+        value: 1000,
         showValue: true,
         view: activeView,
       });
@@ -62,8 +62,8 @@ export function Sidebar() {
       addAnnotation({
         type: 'callout',
         text: 'Note',
-        anchorPosition: { ...DEFAULT_ELEMENT_POSITION },
-        textPosition: { x: DEFAULT_ELEMENT_POSITION.x + 30, y: DEFAULT_ELEMENT_POSITION.y - 20 },
+        anchorPosition: { x: 400, y: 500 },
+        textPosition: { x: 800, y: 250 },
         view: activeView,
       });
     }

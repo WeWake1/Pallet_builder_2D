@@ -8,11 +8,16 @@ import { PropertiesPanel } from './components/Sidebar/PropertiesPanel';
 import { LandingPage } from './components/Landing/LandingPage';
 import { ErrorBoundary } from './components/UI/ErrorBoundary';
 import { isMobileDevice } from './utils/helpers';
+import { useAutosave } from './hooks/useAutosave';
+import { loadAutosave, autosaveHasContent } from './utils/projectStorage';
 
 function App() {
+  useAutosave();
   const isMobile = isMobileDevice();
   const [showSpecModal, setShowSpecModal] = useState(false);
-  const [showLanding, setShowLanding] = useState(true);
+  // If a previous session left recovered work, skip the marketing landing page
+  // and drop the user straight back into the editor with their design restored.
+  const [showLanding, setShowLanding] = useState(() => !autosaveHasContent(loadAutosave()));
 
   // Show landing page first
   if (showLanding) {

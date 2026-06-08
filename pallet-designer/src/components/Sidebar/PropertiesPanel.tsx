@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore, useSelectedComponent, useSelectedAnnotation } from '../../store/useStore';
-import { COMPONENT_COLORS, A4_WIDTH_MM, A4_HEIGHT_MM } from '../../constants';
+import { COMPONENT_COLORS, A4_WIDTH_MM, A4_HEIGHT_MM, DRAWING_SCALE_OPTIONS } from '../../constants';
 import type { Annotation, PalletComponent, ViewType } from '../../types';
 import { Keyboard } from 'lucide-react';
 import { KeyboardShortcutsModal } from '../UI/KeyboardShortcutsModal';
@@ -21,14 +21,14 @@ const COLOR_PRESETS = [
 
 // Grid size presets
 const GRID_SIZE_OPTIONS = [
-  { value: 5, label: '5mm (Fine)' },
-  { value: 10, label: '10mm (Standard)' },
-  { value: 20, label: '20mm (Coarse)' },
+  { value: 25, label: '25mm (Fine)' },
+  { value: 50, label: '50mm (Standard)' },
+  { value: 100, label: '100mm (Coarse)' },
 ];
 
 // Canvas settings panel when nothing is selected
 function CanvasSettingsPanel() {
-  const { canvas, toggleGrid, toggleSnap, setGridSize, toggleDarkMode } = useStore();
+  const { canvas, toggleGrid, toggleSnap, setGridSize, setDrawingScale, toggleDarkMode } = useStore();
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   
   return (
@@ -106,6 +106,25 @@ function CanvasSettingsPanel() {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Drawing Scale */}
+      <div>
+        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
+          Drawing Scale
+        </h4>
+        <select
+          value={canvas.drawingScale}
+          onChange={(e) => setDrawingScale(Number(e.target.value))}
+          className="w-full h-8 px-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+        >
+          {DRAWING_SCALE_OPTIONS.map((s) => (
+            <option key={s} value={s}>1:{s}</option>
+          ))}
+        </select>
+        <p className="text-xs text-[var(--color-text-muted)] mt-1">
+          The A4 sheet represents {A4_WIDTH_MM * canvas.drawingScale} × {A4_HEIGHT_MM * canvas.drawingScale} mm of real space. You always type real sizes.
+        </p>
       </div>
 
       {/* Appearance */}
@@ -447,7 +466,7 @@ export function PropertiesPanel() {
   const colors = selectedComponent.color || COMPONENT_COLORS[selectedComponent.type];
 
   const handleDimensionChange = (key: 'width' | 'thickness' | 'length', value: string) => {
-    const numValue = parseInt(value, 10);
+    const numValue = parseFloat(value);
     if (!isNaN(numValue) && numValue > 0) {
       updateComponent(selectedComponent.id, {
         dimensions: { ...selectedComponent.dimensions, [key]: numValue }
@@ -482,7 +501,7 @@ export function PropertiesPanel() {
   };
 
   const handlePositionChange = (key: 'x' | 'y', value: string) => {
-    const numValue = parseInt(value, 10);
+    const numValue = parseFloat(value);
     if (!isNaN(numValue)) {
       updateComponent(selectedComponent.id, {
         position: {

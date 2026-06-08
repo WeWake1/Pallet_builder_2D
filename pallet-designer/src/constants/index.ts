@@ -11,9 +11,14 @@ export const CANVAS_SCALE = 2; // 2 pixels per mm
 export const A4_WIDTH_PX = A4_WIDTH_MM * CANVAS_SCALE;
 export const A4_HEIGHT_PX = A4_HEIGHT_MM * CANVAS_SCALE;
 
-// Grid settings
-export const DEFAULT_GRID_SIZE = 5; // 5mm grid (finer for precision)
-export const MAJOR_GRID_INTERVAL = 50; // mm - interval for major grid lines
+// Grid settings (real-world millimeters)
+export const DEFAULT_GRID_SIZE = 50; // 50mm grid in real-world mm
+export const MAJOR_GRID_INTERVAL = 500; // mm - interval for major grid lines (real-world)
+
+// Drawing scale: real-world mm per paper mm. 10 => the drawing is shown at 1:10,
+// so the A4 sheet (210x297mm) represents 2100x2970mm of real space.
+export const DEFAULT_DRAWING_SCALE = 10;
+export const DRAWING_SCALE_OPTIONS = [5, 8, 10, 15, 20, 25];
 
 // Rotation settings
 export const ROTATION_SNAP_ANGLE = 15; // degrees - snap increment when rotating objects
@@ -35,11 +40,12 @@ export const VIEW_LABELS: Record<ViewType, { label: string; arrow: string }> = {
 // Default component dimensions (in mm) - Scaled for A4 canvas display
 // These represent the component size on the canvas/paper, not real-world size
 // For a pallet drawing, think of this as 1:10 scale (10mm paper = 100mm real)
+// Real-world millimeters. These are drawn shrunk by the drawing scale (1:10 default).
 export const DEFAULT_COMPONENT_DIMENSIONS: Record<string, { width: number; thickness: number; length: number }> = {
-  'top-board': { width: 10, thickness: 2, length: 120 },         // Top Board (100mm x 1200mm)
-  'centre-board': { width: 14.5, thickness: 2, length: 80 },     // Centre Board (145mm x 800mm)
-  'block': { width: 14.5, thickness: 8, length: 10 },            // Block (145mm x 100mm)
-  'bottom-board': { width: 10, thickness: 2, length: 120 },      // Bottom Board (100mm x 1200mm)
+  'top-board': { width: 100, thickness: 22, length: 1200 },      // Top deck board
+  'centre-board': { width: 145, thickness: 22, length: 800 },    // Centre / lead board
+  'block': { width: 100, thickness: 78, length: 100 },           // Support block
+  'bottom-board': { width: 100, thickness: 22, length: 1200 },   // Bottom deck board
 };
 
 // GMA Notch specifications (in mm)

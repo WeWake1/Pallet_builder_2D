@@ -8,7 +8,7 @@ import type {
   BrandingConfig,
   Annotation
 } from '../types';
-import { DEFAULT_GRID_SIZE, DEFAULT_LOAD_CAPACITIES, DEFAULT_TOLERANCES, PASTE_OFFSET } from '../constants';
+import { DEFAULT_GRID_SIZE, DEFAULT_DRAWING_SCALE, DEFAULT_LOAD_CAPACITIES, DEFAULT_TOLERANCES, PASTE_OFFSET } from '../constants';
 import { getPresetComponents, getPresetDimensions } from '../data/presets';
 
 // Generate unique ID
@@ -77,6 +77,7 @@ const initialState: Omit<AppState, keyof AppActions> = {
     snapToGrid: true,
     gridSize: DEFAULT_GRID_SIZE,
     darkMode: false,
+    drawingScale: DEFAULT_DRAWING_SCALE,
   },
   selectedComponentIds: [],
   selectedAnnotationId: null,
@@ -642,6 +643,12 @@ export const useStore = create<AppState & AppActions>((set, get) => ({
   setGridSize: (size) => {
     set((state) => ({
       canvas: { ...state.canvas, gridSize: size },
+    }));
+  },
+
+  setDrawingScale: (scale) => {
+    set((state) => ({
+      canvas: { ...state.canvas, drawingScale: scale },
     }));
   },
 

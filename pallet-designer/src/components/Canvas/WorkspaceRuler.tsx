@@ -8,6 +8,7 @@ interface WorkspaceRulerProps {
   canvasOffset: number; // Offset from ruler start to canvas start
   canvasSize: number; // Size of the canvas in pixels (after zoom)
   zoom: number;
+  drawingScale: number; // real-world mm per paper mm (labels show real mm)
   cursorPosition?: { x: number; y: number } | null;
 }
 
@@ -15,13 +16,14 @@ const RULER_SIZE = 24; // pixels - slightly larger for better visibility
 const MAJOR_TICK_INTERVAL = 10; // mm
 const MINOR_TICK_INTERVAL = 5; // mm
 
-export function WorkspaceRuler({ 
-  orientation, 
-  containerSize, 
-  canvasOffset, 
+export function WorkspaceRuler({
+  orientation,
+  containerSize,
+  canvasOffset,
   canvasSize,
   zoom,
-  cursorPosition 
+  drawingScale,
+  cursorPosition
 }: WorkspaceRulerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { canvas: canvasState } = useStore();
@@ -138,12 +140,12 @@ export function WorkspaceRuler({
         if (orientation === 'horizontal') {
           ctx.textBaseline = 'top';
           ctx.textAlign = 'center';
-          ctx.fillText(String(mm), pos, 2);
+          ctx.fillText(String(mm * drawingScale), pos, 2);
         } else {
           // Vertical ruler - horizontal text (upright)
           ctx.textBaseline = 'middle';
           ctx.textAlign = 'left';
-          ctx.fillText(String(mm), 2, pos);
+          ctx.fillText(String(mm * drawingScale), 2, pos);
         }
       }
     }
@@ -151,7 +153,8 @@ export function WorkspaceRuler({
     // Draw cursor position indicator
     if (cursorPosition) {
       const cursorMm = orientation === 'horizontal' ? cursorPosition.x : cursorPosition.y;
-      const cursorPos = canvasOffset + (cursorMm * scale);
+      // cursorMm is real-world mm; convert back to paper mm for on-ruler position.
+      const cursorPos = canvasOffset + ((cursorMm / drawingScale) * scale);
       
       if (cursorPos >= canvasOffset && cursorPos <= canvasOffset + canvasSize) {
         // Draw highlight background
@@ -199,7 +202,7 @@ export function WorkspaceRuler({
         }
       }
     }
-  }, [orientation, containerSize, canvasOffset, canvasSize, zoom, colors, cursorPosition, isDarkMode]);
+  }, [orientation, containerSize, canvasOffset, canvasSize, zoom, drawingScale, colors, cursorPosition, isDarkMode]);
 
   useEffect(() => {
     draw();

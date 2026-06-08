@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import * as fabric from 'fabric';
 import { useStore } from '../store/useStore';
 import { COMPONENT_COLORS, CANVAS_SCALE, A4_WIDTH_PX, A4_HEIGHT_PX, ROTATION_SNAP_ANGLE, MAJOR_GRID_INTERVAL } from '../constants';
+import { realMmToPx, pxToRealMm } from '../utils/helpers';
 import type { PalletComponent, TextAnnotation, DimensionAnnotation, CalloutAnnotation } from '../types';
 
 // Module-level canvas reference for export functionality
@@ -58,13 +59,14 @@ const getCrispPosition = (left: number, top: number, width: number, height: numb
 // Create a pallet component shape (with optional notch or chamfer)
 const createComponentShape = (
   component: PalletComponent,
-  colors: { fill: string; stroke: string }
+  colors: { fill: string; stroke: string },
+  drawingScale: number
 ): fabric.FabricObject => {
   const { dimensions, position, rotation } = component;
-  const w = dimensions.width * CANVAS_SCALE;
-  const h = dimensions.length * CANVAS_SCALE;
-  const x = position.x * CANVAS_SCALE;
-  const y = position.y * CANVAS_SCALE;
+  const w = realMmToPx(dimensions.width, drawingScale);
+  const h = realMmToPx(dimensions.length, drawingScale);
+  const x = realMmToPx(position.x, drawingScale);
+  const y = realMmToPx(position.y, drawingScale);
 
   // Calculate crisp center position
   const { x: left, y: top } = getCrispPosition(x + w / 2, y + h / 2, w, h, rotation);
@@ -97,6 +99,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const [canvasInstance, setCanvasInstance] = useState<fabric.Canvas | null>(null);
   const gridStateRef = useRef<{ enabled: boolean; size: number }>({ enabled: false, size: 10 });
+  const drawingScaleRef = useRef<number>(10);
   const updateAnnotationRef = useRef<(id: string, updates: Partial<TextAnnotation | DimensionAnnotation | CalloutAnnotation>) => void>(() => {});
   const captureHistoryRef = useRef<() => void>(() => {});
   const isUpdatingSelectionRef = useRef(false); // Prevent circular selection updates
@@ -139,6 +142,11 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       size: canvasState.gridSize,
     };
   }, [canvasState.snapToGrid, canvasState.gridSize]);
+
+  // Keep drawing-scale ref in sync so canvas event handlers read the live value.
+  useEffect(() => {
+    drawingScaleRef.current = canvasState.drawingScale;
+  }, [canvasState.drawingScale]);
 
   // Initialize canvas
   useEffect(() => {
@@ -575,7 +583,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Grid snapping if enabled
       const { enabled, size } = gridStateRef.current;
       if (enabled && size > 0) {
-        const gridSizePx = size * CANVAS_SCALE;
+        const gridSizePx = realMmToPx(size, drawingScaleRef.current);
         
         // Snap based on the top-left edge of the bounding box
         // This ensures objects with odd dimensions (like 14.5mm -> 29px) align their edges to the grid
@@ -655,7 +663,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         
         // Calculate new dimension based on scaled size
         const scaledSize = Math.max(originalWidth * scaleX, originalHeight * scaleY);
-        const newValueMm = Math.round(scaledSize / CANVAS_SCALE);
+        const newValueMm = Math.round(pxToRealMm(scaledSize, drawingScaleRef.current));
         
         // Find and update the text object in the group
         const textObj = obj.getObjects().find((o) => o instanceof fabric.Text);
@@ -668,7 +676,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Real-time grid snapping
       const { enabled, size } = gridStateRef.current;
       if (enabled && size > 0) {
-        const gridSizePx = size * CANVAS_SCALE;
+        const gridSizePx = realMmToPx(size, drawingScaleRef.current);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const transform = (e as any).transform;
         
@@ -733,12 +741,13 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         // Capture history before modifying state
         captureHistoryRef.current();
 
+        const scale = drawingScaleRef.current;
         const activeSelection = target as fabric.ActiveSelection;
 
         // Snap the entire selection to the grid first
         const { enabled, size } = gridStateRef.current;
         if (enabled && size > 0 && !isScalingRef.current) {
-          const gridSizePx = size * CANVAS_SCALE;
+          const gridSizePx = realMmToPx(size, drawingScaleRef.current);
           
           // Use the selection's top-left corner for alignment
           const left = activeSelection.left || 0;
@@ -786,17 +795,17 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
           // Store with 2 decimal precision to support 0.5mm increments (e.g. 14.5 board centers)
           const newPosition = {
-            x: Number((left / CANVAS_SCALE).toFixed(2)),
-            y: Number((top / CANVAS_SCALE).toFixed(2)),
+            x: Number(pxToRealMm(left, scale).toFixed(2)),
+            y: Number(pxToRealMm(top, scale).toFixed(2)),
           };
-          
+
           // Dimensions
           const isRect = obj instanceof fabric.Rect;
-          
+
           // Use precision for dimensions too
           const newDimensions = isRect ? {
-            width: Number((finalWidth / CANVAS_SCALE).toFixed(2)),
-            length: Number((finalHeight / CANVAS_SCALE).toFixed(2)),
+            width: Number(pxToRealMm(finalWidth, scale).toFixed(2)),
+            length: Number(pxToRealMm(finalHeight, scale).toFixed(2)),
             thickness: data.dimensions?.thickness || 22,
           } : data.dimensions;
 
@@ -818,9 +827,10 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
       // Capture history before modifying state
       captureHistoryRef.current();
-      
+
+      const scale = drawingScaleRef.current;
       const { enabled, size } = gridStateRef.current;
-      const gridSizePx = size * CANVAS_SCALE;
+      const gridSizePx = realMmToPx(size, drawingScaleRef.current);
       
       // Get current center position (objects use center origin)
       let centerX = obj.left || 0;
@@ -873,16 +883,16 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // 0.25mm = 0.5px. Integer mm forces 2px jumps, which misses the grid for odd-width objects centered.
       const newPosition = {
         // Use precision to avoid floating point jitter on save
-        x: Number((left / CANVAS_SCALE).toFixed(2)),
-        y: Number((top / CANVAS_SCALE).toFixed(2)),
+        x: Number(pxToRealMm(left, scale).toFixed(2)),
+        y: Number(pxToRealMm(top, scale).toFixed(2)),
       };
-      
+
       // For rectangles, update width/height. For paths, only update position and rotation
       const isRect = obj instanceof fabric.Rect;
-      
+
       const newDimensions = isRect ? {
-        width: Math.round(finalWidth / CANVAS_SCALE),
-        length: Math.round(finalHeight / CANVAS_SCALE),
+        width: Number(pxToRealMm(finalWidth, scale).toFixed(2)),
+        length: Number(pxToRealMm(finalHeight, scale).toFixed(2)),
         thickness: data.dimensions?.thickness || 22,
       } : data.dimensions;
       
@@ -899,8 +909,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           top: centerY,
           scaleX: 1,
           scaleY: 1,
-          width: newDimensions.width * CANVAS_SCALE,
-          height: newDimensions.length * CANVAS_SCALE,
+          width: realMmToPx(newDimensions.width, scale),
+          height: realMmToPx(newDimensions.length, scale),
         });
         obj.setCoords();
       }
@@ -979,7 +989,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     
     // Draw grid if enabled
     if (canvasState.gridEnabled) {
-      const gridSizeMm = canvasState.gridSize; // Grid size in mm
+      const gridSizeMm = canvasState.gridSize; // Grid size in real-world mm
+      const scale = canvasState.drawingScale;
       
       // Colors - slightly more visible
     const minorColor = canvasState.darkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)';
@@ -992,6 +1003,9 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const paperHeightPx = A4_HEIGHT_PX;
       const paperWidthMm = 210;
       const paperHeightMm = 297;
+      // The A4 sheet represents (paper * scale) of real space; grid is in real mm.
+      const realWidthMm = paperWidthMm * scale;
+      const realHeightMm = paperHeightMm * scale;
       
       // Snap a coordinate to a device pixel boundary so 1px strokes are crisp.
       // The canvas is displayed with a CSS transform scale() in MultiViewCanvas,
@@ -1007,14 +1021,14 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // Major grid spacing (big squares)
       // Offset major grid so that a major line lands exactly on the far edge.
       // Example: 210mm => offset 10mm, so majors are at 10,60,110,160,210.
-      const majorOffsetY = ((paperHeightMm % MAJOR_GRID_INTERVAL) + MAJOR_GRID_INTERVAL) % MAJOR_GRID_INTERVAL;
+      const majorOffsetY = ((realHeightMm % MAJOR_GRID_INTERVAL) + MAJOR_GRID_INTERVAL) % MAJOR_GRID_INTERVAL;
 
       // Draw vertical lines (NO major verticals - per UX request)
-      const vCount = Math.floor(paperWidthMm / gridSizeMm);
+      const vCount = Math.floor(realWidthMm / gridSizeMm);
       for (let i = 0; i <= vCount; i++) {
         const xMm = i * gridSizeMm;
         const strokeWidth = 0.5;
-        const xPx = snapToDevicePixel(xMm * CANVAS_SCALE, strokeWidth);
+        const xPx = snapToDevicePixel(realMmToPx(xMm, scale), strokeWidth);
 
         const line = new fabric.Line([xPx, 0, xPx, paperHeightPx], {
           stroke: minorColor,
@@ -1031,12 +1045,12 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       // (No extra edge overlays needed; edges are included in the loop)
       
       // Draw horizontal lines (including edges at 0 and 297mm)
-      const hCount = Math.floor(paperHeightMm / gridSizeMm);
+      const hCount = Math.floor(realHeightMm / gridSizeMm);
       for (let i = 0; i <= hCount; i++) {
         const yMm = i * gridSizeMm;
         const isMajor = ((yMm - majorOffsetY) % MAJOR_GRID_INTERVAL === 0);
         const strokeWidth = isMajor ? 1 : 0.5;
-        const yPx = snapToDevicePixel(yMm * CANVAS_SCALE, strokeWidth);
+        const yPx = snapToDevicePixel(realMmToPx(yMm, scale), strokeWidth);
         
         // Horizontal line spans full paper width
         const line = new fabric.Line([0, yPx, paperWidthPx, yPx], {
@@ -1067,7 +1081,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     }
     
     canvas.renderAll();
-  }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, width, height, canvasVersion]);
+  }, [canvasState.gridEnabled, canvasState.gridSize, canvasState.darkMode, canvasState.drawingScale, width, height, canvasVersion]);
 
   // Update canvas background for dark mode
   useEffect(() => {
@@ -1078,7 +1092,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   }, [canvasState.darkMode, canvasVersion]);
 
   // Sync components to canvas
-  const syncComponents = useCallback((viewComponents: PalletComponent[]) => {
+  const syncComponents = useCallback((viewComponents: PalletComponent[], drawingScale: number) => {
     if (!fabricRef.current) return;
 
     const canvas = fabricRef.current;
@@ -1101,8 +1115,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
       if (existingObj) {
         const isRect = existingObj instanceof fabric.Rect;
-        const w = component.dimensions.width * CANVAS_SCALE;
-        const h = component.dimensions.length * CANVAS_SCALE;
+        const w = realMmToPx(component.dimensions.width, drawingScale);
+        const h = realMmToPx(component.dimensions.length, drawingScale);
         
         // Update colors
         existingObj.set({
@@ -1117,8 +1131,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         // Use crisp position logic to avoid blur on odd-width objects (like 14.5mm)
         // especially when rotated 90 degrees.
         const { x: targetLeft, y: targetTop } = getCrispPosition(
-          component.position.x * CANVAS_SCALE + w / 2,
-          component.position.y * CANVAS_SCALE + h / 2,
+          realMmToPx(component.position.x, drawingScale) + w / 2,
+          realMmToPx(component.position.y, drawingScale) + h / 2,
           w,
           h,
           component.rotation
@@ -1195,7 +1209,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         });
       } else {
         // Create new object using the shape factory
-        const shape = createComponentShape(component, colors);
+        const shape = createComponentShape(component, colors, drawingScale);
         
         setObjectData(shape, {
           id: component.id,
@@ -1266,7 +1280,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   }, []);
 
   // Create annotation object
-  const createAnnotationObject = useCallback((annotation: TextAnnotation | DimensionAnnotation | CalloutAnnotation): fabric.FabricObject | fabric.Group | null => {
+  const createAnnotationObject = useCallback((annotation: TextAnnotation | DimensionAnnotation | CalloutAnnotation, drawingScale: number): fabric.FabricObject | fabric.Group | null => {
     // Helper to check if color is "black-ish" (default text colors)
     const isBlackish = (c: string) => ['#000000', '#000', 'black', '#333333', '#1f2937'].includes(c?.toLowerCase());
     
@@ -1276,8 +1290,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       const displayColor = (canvasState.darkMode && isBlackish(annotation.color)) ? '#ffffff' : annotation.color;
       
       const textObj = new fabric.IText(annotation.text, {
-        left: annotation.position.x * CANVAS_SCALE,
-        top: annotation.position.y * CANVAS_SCALE,
+        left: realMmToPx(annotation.position.x, drawingScale),
+        top: realMmToPx(annotation.position.y, drawingScale),
         fontSize: annotation.fontSize * CANVAS_SCALE / 2,
         fill: displayColor,
         fontFamily: 'Arial',
@@ -1302,10 +1316,11 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       
       // Handle modification (move, rotate, scale)
       textObj.on('modified', () => {
+        const scale = drawingScaleRef.current;
         const updates: Partial<TextAnnotation> = {
           position: {
-            x: Number(((textObj.left || 0) / CANVAS_SCALE).toFixed(2)),
-            y: Number(((textObj.top || 0) / CANVAS_SCALE).toFixed(2)),
+            x: Number(pxToRealMm(textObj.left || 0, scale).toFixed(2)),
+            y: Number(pxToRealMm(textObj.top || 0, scale).toFixed(2)),
           },
           rotation: Math.round(textObj.angle || 0),
         };
@@ -1332,14 +1347,14 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       
       return textObj;
     } else if (annotation.type === 'dimension') {
-      const x1 = annotation.startPosition.x * CANVAS_SCALE;
-      const y1 = annotation.startPosition.y * CANVAS_SCALE;
-      const x2 = annotation.endPosition.x * CANVAS_SCALE;
-      const y2 = annotation.endPosition.y * CANVAS_SCALE;
-      
+      const x1 = realMmToPx(annotation.startPosition.x, drawingScale);
+      const y1 = realMmToPx(annotation.startPosition.y, drawingScale);
+      const x2 = realMmToPx(annotation.endPosition.x, drawingScale);
+      const y2 = realMmToPx(annotation.endPosition.y, drawingScale);
+
       // Calculate line properties
       const lineLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-      const distanceMm = Math.round(lineLength / CANVAS_SCALE);
+      const distanceMm = Math.round(pxToRealMm(lineLength, drawingScale));
       const displayValue = annotation.value > 0 ? annotation.value : distanceMm;
       
       // Calculate angle and midpoint
@@ -1434,7 +1449,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         const scaleX = group.scaleX || 1;
 
         const newLength = lineLength * scaleX;
-        const newValueMm = Math.round(newLength / CANVAS_SCALE);
+        const newValueMm = Math.round(pxToRealMm(newLength, drawingScaleRef.current));
 
         const textObj = group.getObjects().find((o) => o instanceof fabric.IText);
         if (textObj && textObj instanceof fabric.IText) {
@@ -1444,6 +1459,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       
       // Handle modification complete - save to store
       group.on('modified', () => {
+        const scale = drawingScaleRef.current;
         const scaleX = group.scaleX || 1;
         const groupAngle = group.angle || 0;
         const groupAngleRad = (groupAngle * Math.PI) / 180;
@@ -1461,7 +1477,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
         // Update the group visuals so resetting scale does not snap back.
         const newHalfLength = newLength / 2;
-        const textContent = `${Math.round(newLength / CANVAS_SCALE)}mm`;
+        const textContent = `${Math.round(pxToRealMm(newLength, scale))}mm`;
         const textWidth = textContent.length * 10;
         const gapWidth = textWidth + 20;
         const halfGap = gapWidth / 2;
@@ -1482,26 +1498,27 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
         group.set({ scaleX: 1, scaleY: 1 });
         group.setCoords();
 
-        // Persist to store in mm coordinates
+        // Persist to store in real-world mm coordinates
         updateAnnotationRef.current(annotationId, {
           startPosition: {
-            x: Number((newStartPx.x / CANVAS_SCALE).toFixed(2)),
-            y: Number((newStartPx.y / CANVAS_SCALE).toFixed(2)),
+            x: Number(pxToRealMm(newStartPx.x, scale).toFixed(2)),
+            y: Number(pxToRealMm(newStartPx.y, scale).toFixed(2)),
           },
           endPosition: {
-            x: Number((newEndPx.x / CANVAS_SCALE).toFixed(2)),
-            y: Number((newEndPx.y / CANVAS_SCALE).toFixed(2)),
+            x: Number(pxToRealMm(newEndPx.x, scale).toFixed(2)),
+            y: Number(pxToRealMm(newEndPx.y, scale).toFixed(2)),
           },
-          // keep value stable unless user explicitly edits it elsewhere
+          // Dimension auto-measures: keep the shown value equal to the line length.
+          value: Math.round(pxToRealMm(newLength, scale)),
         });
       });
       
       return group;
     } else if (annotation.type === 'callout') {
-      const anchorX = annotation.anchorPosition.x * CANVAS_SCALE;
-      const anchorY = annotation.anchorPosition.y * CANVAS_SCALE;
-      const textX = annotation.textPosition.x * CANVAS_SCALE;
-      const textY = annotation.textPosition.y * CANVAS_SCALE;
+      const anchorX = realMmToPx(annotation.anchorPosition.x, drawingScale);
+      const anchorY = realMmToPx(annotation.anchorPosition.y, drawingScale);
+      const textX = realMmToPx(annotation.textPosition.x, drawingScale);
+      const textY = realMmToPx(annotation.textPosition.y, drawingScale);
       const annotationId = annotation.id;
       
       // Create a movable group for the callout
@@ -1575,18 +1592,19 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
       
       // Handle group modification - update positions
       group.on('modified', () => {
+        const scale = drawingScaleRef.current;
         const groupLeft = group.left || 0;
         const groupTop = group.top || 0;
-        
+
         // Update anchor position (group origin is at anchor)
         updateAnnotationRef.current(annotationId, {
           anchorPosition: {
-            x: Number((groupLeft / CANVAS_SCALE).toFixed(2)),
-            y: Number((groupTop / CANVAS_SCALE).toFixed(2)),
+            x: Number(pxToRealMm(groupLeft, scale).toFixed(2)),
+            y: Number(pxToRealMm(groupTop, scale).toFixed(2)),
           },
           textPosition: {
-            x: Number(((groupLeft + lineEndX) / CANVAS_SCALE).toFixed(2)),
-            y: Number(((groupTop + lineEndY) / CANVAS_SCALE).toFixed(2)),
+            x: Number(pxToRealMm(groupLeft + lineEndX, scale).toFixed(2)),
+            y: Number(pxToRealMm(groupTop + lineEndY, scale).toFixed(2)),
           },
         });
       });
@@ -1598,7 +1616,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
   }, [canvasState.darkMode]);
 
   // Sync annotations to canvas
-  const syncAnnotations = useCallback((viewAnnotations: (TextAnnotation | DimensionAnnotation | CalloutAnnotation)[]) => {
+  const syncAnnotations = useCallback((viewAnnotations: (TextAnnotation | DimensionAnnotation | CalloutAnnotation)[], drawingScale: number) => {
     if (!fabricRef.current) return;
 
     const canvas = fabricRef.current;
@@ -1639,8 +1657,8 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           const displayColor = (canvasState.darkMode && isBlackish(annotation.color)) ? '#ffffff' : annotation.color;
 
           existingObj.set({
-            left: annotation.position.x * CANVAS_SCALE,
-            top: annotation.position.y * CANVAS_SCALE,
+            left: realMmToPx(annotation.position.x, drawingScale),
+            top: realMmToPx(annotation.position.y, drawingScale),
             angle: annotation.rotation,
             fontSize: annotation.fontSize * CANVAS_SCALE / 2,
             fontWeight: annotation.fontWeight,
@@ -1652,10 +1670,10 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           existingObj.setCoords();
         } else if (annotation.type === 'dimension') {
           // For dimension lines, update position (more complex - group center)
-          const x1 = annotation.startPosition.x * CANVAS_SCALE;
-          const y1 = annotation.startPosition.y * CANVAS_SCALE;
-          const x2 = annotation.endPosition.x * CANVAS_SCALE;
-          const y2 = annotation.endPosition.y * CANVAS_SCALE;
+          const x1 = realMmToPx(annotation.startPosition.x, drawingScale);
+          const y1 = realMmToPx(annotation.startPosition.y, drawingScale);
+          const x2 = realMmToPx(annotation.endPosition.x, drawingScale);
+          const y2 = realMmToPx(annotation.endPosition.y, drawingScale);
           const midX = (x1 + x2) / 2;
           const midY = (y1 + y2) / 2;
           const lineAngle = Math.atan2(y2 - y1, x2 - x1);
@@ -1672,7 +1690,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
             const textObj = existingObj.getObjects().find((o) => o instanceof fabric.IText);
             if (textObj && textObj instanceof fabric.IText) {
               const lineLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
-              const distanceMm = Math.round(lineLength / CANVAS_SCALE);
+              const distanceMm = Math.round(pxToRealMm(lineLength, drawingScale));
               const displayValue = annotation.value > 0 ? annotation.value : distanceMm;
               const newText = `${displayValue}mm`;
               
@@ -1685,14 +1703,14 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
           existingObj.setCoords();
         } else if (annotation.type === 'callout') {
           existingObj.set({
-            left: annotation.anchorPosition.x * CANVAS_SCALE,
-            top: annotation.anchorPosition.y * CANVAS_SCALE,
+            left: realMmToPx(annotation.anchorPosition.x, drawingScale),
+            top: realMmToPx(annotation.anchorPosition.y, drawingScale),
           });
           existingObj.setCoords();
         }
       } else {
         // Create new annotation
-        const annotationObj = createAnnotationObject(annotation);
+        const annotationObj = createAnnotationObject(annotation, drawingScale);
         if (annotationObj) {
           setObjectData(annotationObj, {
             id: annotation.id,
@@ -1746,10 +1764,10 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     const viewAnnotations = annotations[canvasState.activeView];
     
     // Sync components first
-    syncComponents(viewComponents);
-    
+    syncComponents(viewComponents, canvasState.drawingScale);
+
     // Then sync annotations
-    syncAnnotations(viewAnnotations);
+    syncAnnotations(viewAnnotations, canvasState.drawingScale);
     
     // Ensure proper z-ordering: grid at back
     // Build a deterministic stack order based on zIndex
@@ -1825,7 +1843,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
     }
     
     canvas.renderAll();
-  }, [components, annotations, canvasState.activeView, syncComponents, syncAnnotations, canvasVersion]);
+  }, [components, annotations, canvasState.activeView, canvasState.drawingScale, syncComponents, syncAnnotations, canvasVersion]);
 
   // Handle selection from state - support multi-selection
   useEffect(() => {
@@ -1916,7 +1934,7 @@ export function useFabricCanvas({ canvasRef, width, height }: UseFabricCanvasPro
 
       const { enabled, size } = gridStateRef.current;
       // Step size: 1 grid unit if grid enabled, 1px if disabled (for fine adjustments)
-      const step = (enabled && size > 0) ? (size * CANVAS_SCALE) : 1;
+      const step = (enabled && size > 0) ? (realMmToPx(size, drawingScaleRef.current)) : 1;
       
       let dx = 0;
       let dy = 0;

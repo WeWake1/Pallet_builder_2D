@@ -171,8 +171,9 @@ export interface CanvasState {
   editorMode: EditorMode;
   gridEnabled: boolean;
   snapToGrid: boolean;
-  gridSize: number; // in mm
+  gridSize: number; // in mm (real-world)
   darkMode: boolean;
+  drawingScale: number; // real-world mm per paper mm (10 => shown at 1:10)
 }
 
 // Main app state
@@ -259,6 +260,7 @@ export interface AppActions {
   toggleSnap: () => void;
   toggleDarkMode: () => void;
   setGridSize: (size: number) => void;
+  setDrawingScale: (scale: number) => void;
   
   // Specification actions
   updateSpecification: (updates: Partial<PalletSpecification>) => void;
